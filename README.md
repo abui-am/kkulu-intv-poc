@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Screen-aware voice agent
 
-## Getting Started
+Interview prototype for a live agent that helps someone connect GitHub inside a fake SaaS app. The agent hears the user, watches a shared window, and keeps an explicit world model of the session. A decision is spoken only when it still matches the latest semantic screen.
 
-First, run the development server:
+## Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local
+# set OPENAI_API_KEY in .env.local
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [the sandbox](http://localhost:3000/sandbox) in one window and [the agent](http://localhost:3000/session) in another. Start the session, share the sandbox window, and say that you want to connect GitHub.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The API key stays on the server. The browser receives only a short-lived Realtime credential for `gpt-live-transcribe`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Loop
 
-## Learn More
+Local frame differencing decides when the screen deserves a look. A short stable window drops loading frames. `gpt-6-luna` turns one screenshot into a `ScreenState`. The workflow verifier, not the model, marks a step complete. `gpt-6-luna` proposes the next line; `gpt-6-sol` is used only for ambiguity, conflicting evidence, repeated recovery failure, a changed goal, or a decision that asks for a deeper pass. If the semantic screen version moves while a decision is in flight, that decision is rejected and the agent replans.
 
-To learn more about Next.js, take a look at the following resources:
+## Checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm test
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Unit tests cover the reducer, workflow verifier, stale-decision validator, and context builder. Live scenarios — happy path, API Keys, a stale instruction, a side question, barge-in, the one-second integrations loader, hover or clock noise, and the unclear screen — are exercised in the two windows. The debug panel is the trace.
