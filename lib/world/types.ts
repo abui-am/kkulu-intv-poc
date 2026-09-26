@@ -11,6 +11,7 @@ export type ScreenElement = {
   label: string;
   role: string;
   state?: string;
+  bbox?: [number, number, number, number];
 };
 
 export type ScreenSemanticState = string;
