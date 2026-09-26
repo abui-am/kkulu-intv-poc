@@ -19,6 +19,8 @@ The API key stays on the server. The browser receives only a short-lived Realtim
 
 Local frame differencing decides when the screen deserves a look. A short stable window drops loading frames. `gpt-6-luna` turns one screenshot into a `ScreenState`. The workflow verifier, not the model, marks a step complete. `gpt-6-luna` proposes the next line; `gpt-6-sol` is used only for ambiguity, conflicting evidence, repeated recovery failure, a changed goal, or a decision that asks for a deeper pass. If the semantic screen version moves while a decision is in flight, that decision is rejected and the agent replans.
 
+Eligible navigation turns use an inference-time MobileDreamer-style lookahead: the screen sketch includes approximate element boxes, three candidate instructions are forecast over two steps, and the reasoner selects one instruction for the human. The agent does not execute UI actions. Side questions, loading states, ambiguous screens, and unavailable screen shares use direct reasoning. Forecast failures also fall back to direct reasoning; predictions never count as verified progress. The trace shows each predicted branch, the selection, model calls, and latency.
+
 ## Checks
 
 ```bash

@@ -54,6 +54,22 @@ export type SessionEvent =
       at: number;
     }
   | {
+      type: "LOOKAHEAD_STARTED";
+      basedOnScreenVersion: number;
+      at: number;
+    }
+  | {
+      type: "LOOKAHEAD_RESULT";
+      basedOnScreenVersion: number;
+      status: "completed" | "bypassed" | "fallback";
+      candidateCount: number;
+      validBranchCount: number;
+      modelCalls: number;
+      latencyMs: number;
+      reason: string | null;
+      at: number;
+    }
+  | {
       type: "DECISION_READY";
       decision: AgentDecision;
       at: number;

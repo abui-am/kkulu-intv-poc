@@ -5,6 +5,7 @@ import type { SessionMetrics } from "@/lib/session/metrics";
 import { median } from "@/lib/session/metrics";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/workflow/github-workflow";
 import type { WorldModel } from "@/lib/world/types";
+import type { Rollout } from "@/schemas/lookahead";
 
 function formatTime(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -16,6 +17,10 @@ function describe(event: SessionEvent): string {
       return `SCREEN_STATE_UPDATED v${event.semanticVersion}`;
     case "REASONING_STARTED":
       return `REASONING_STARTED v${event.basedOnScreenVersion}`;
+    case "LOOKAHEAD_STARTED":
+      return `LOOKAHEAD_STARTED v${event.basedOnScreenVersion}`;
+    case "LOOKAHEAD_RESULT":
+      return `LOOKAHEAD_RESULT ${event.status} ${event.validBranchCount}/${event.candidateCount}`;
     case "DECISION_READY":
       return `DECISION_READY based_on=v${event.decision.basedOnScreenVersion}`;
     case "DECISION_REJECTED_STALE":
@@ -126,6 +131,55 @@ export function ScreenStatePanel({ world }: { world: WorldModel }) {
   );
 }
 
+export function RolloutPanel({ rollout }: { rollout: Rollout | null }) {
+  return (
+    <section className="space-y-3 text-sm">
+      <h2 className="font-semibold">Future predictions</h2>
+      {!rollout ? (
+        <p className="text-slate-600">No rollout yet</p>
+      ) : (
+        <>
+          <p className="text-xs leading-5 text-slate-600">
+            {rollout.status} · screen v{rollout.basedOnScreenVersion} · {rollout.modelCalls} model calls · {Math.round(rollout.latencyMs)} ms
+            {rollout.fallbackReason ? <><br />{rollout.fallbackReason}</> : null}
+          </p>
+          {rollout.branches.length > 0 && (
+            <ol className="space-y-2">
+              {rollout.branches.map((branch) => {
+                const selected = branch.candidate.id === rollout.selectedCandidateId;
+                return (
+                  <li key={branch.candidate.id} className={`rounded-lg border p-2 ${selected ? "border-teal-500 bg-teal-50" : "border-slate-200"}`}>
+                    <p className="font-medium">{selected ? "Selected · " : ""}{branch.valid ? "" : "Low confidence · "}{branch.candidate.instruction}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      1. {branch.predictedState.page}: {branch.predictedState.summary} ({Math.round(branch.predictedState.confidence * 100)}%)
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {branch.predictedState.relevantElements.map((element) => `${element.label}${element.bbox ? ` [${element.bbox.join(", ")}]` : ""}`).join(" · ") || "No task-relevant elements"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">Then: {branch.followUp.instruction}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      2. {branch.secondPredictedState.page}: {branch.secondPredictedState.summary} ({Math.round(branch.secondPredictedState.confidence * 100)}%)
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {branch.secondPredictedState.relevantElements.map((element) => `${element.label}${element.bbox ? ` [${element.bbox.join(", ")}]` : ""}`).join(" · ") || "No task-relevant elements"}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Goal: {branch.predictedState.goalProgress} → {branch.secondPredictedState.goalProgress}
+                      {branch.invalidReason ? ` · ${branch.invalidReason}` : ""}
+                      {branch.secondPredictedState.possibleFailure ? ` · Risk: ${branch.secondPredictedState.possibleFailure}` : ""}
+                    </p>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          {rollout.selectionRationale && <p className="text-xs leading-5 text-slate-700">{rollout.selectionRationale}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function MetricsSummary({ metrics }: { metrics: SessionMetrics }) {
   const reasoning = median(metrics.reasoningLatenciesMs);
   return (
@@ -139,6 +193,9 @@ export function MetricsSummary({ metrics }: { metrics: SessionMetrics }) {
         <li>Stale decisions rejected: {metrics.staleDecisionsRejected}</li>
         <li>Deviations / recoveries: {metrics.workflowDeviations} / {metrics.successfulRecoveries}</li>
         <li>Interruptions: {metrics.interruptions}</li>
+        <li>Lookahead runs / fallbacks: {metrics.lookaheadRuns} / {metrics.lookaheadFallbacks}</li>
+        <li>Predicted branches / reasoning model calls: {metrics.lookaheadBranches} / {metrics.lookaheadModelCalls}</li>
+        <li>Median lookahead latency: {median(metrics.lookaheadLatenciesMs) == null ? "—" : `${Math.round(median(metrics.lookaheadLatenciesMs) ?? 0)} ms`}</li>
         <li>Median reasoning latency: {reasoning == null ? "—" : `${Math.round(reasoning)} ms`}</li>
       </ul>
     </section>

@@ -5,6 +5,7 @@ import {
   DecisionPanel,
   EventLogPanel,
   MetricsSummary,
+  RolloutPanel,
   ScreenStatePanel,
   WorldModelPanel,
 } from "@/components/debug/DebugPanels";
@@ -27,6 +28,7 @@ const initial: SessionSnapshot = {
   hearing: false,
   ended: false,
   logFile: null,
+  rollout: null,
 };
 
 export function ConversationPanel() {
@@ -111,6 +113,7 @@ export function ConversationPanel() {
       <aside className="space-y-6 border-slate-200 bg-white p-5 lg:sticky lg:top-0 lg:h-screen lg:overflow-auto lg:border-l">
         <WorldModelPanel world={snapshot.world} lastEvent={snapshot.events.at(-1) ?? null} />
         <ScreenStatePanel world={snapshot.world} />
+        <RolloutPanel rollout={snapshot.rollout} />
         <DecisionPanel world={snapshot.world} />
         <EventLogPanel events={snapshot.events} />
         {snapshot.logFile && <p className="text-xs leading-5 text-slate-600">Saved log: {snapshot.logFile}</p>}

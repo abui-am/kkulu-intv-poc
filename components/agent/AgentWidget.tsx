@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   DecisionPanel,
   EventLogPanel,
+  RolloutPanel,
   ScreenStatePanel,
   WorldModelPanel,
 } from "@/components/debug/DebugPanels";
@@ -23,6 +24,7 @@ const initial: SessionSnapshot = {
   hearing: false,
   ended: false,
   logFile: null,
+  rollout: null,
 };
 
 export function AgentWidget() {
@@ -102,6 +104,7 @@ export function AgentWidget() {
         <aside className="fixed top-0 right-0 z-20 h-screen w-[24rem] max-w-full overflow-auto border-l border-slate-200 bg-white p-5 pb-28 text-slate-900 shadow-xl">
           <WorldModelPanel world={snapshot.world} lastEvent={snapshot.events.at(-1) ?? null} />
           <div className="mt-6 space-y-6">
+            <RolloutPanel rollout={snapshot.rollout} />
             <ScreenStatePanel world={snapshot.world} />
             <DecisionPanel world={snapshot.world} />
             <EventLogPanel events={snapshot.events} />

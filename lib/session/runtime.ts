@@ -1,4 +1,5 @@
 import { buildReasoningContext } from "@/lib/agent/context-builder";
+import { isLookaheadEligible } from "@/lib/agent/lookahead";
 import { detectGoalChange } from "@/lib/agent/router";
 import { requestDecision } from "@/lib/agent/reasoner";
 import { validateDecision } from "@/lib/agent/validator";
@@ -19,6 +20,7 @@ import { EnergyVad } from "@/lib/voice/vad";
 import { SpeechPlayback } from "@/lib/voice/playback";
 import { RealtimeTranscription } from "@/lib/voice/realtime-transcription";
 import type { DenoisedMicrophone } from "@/lib/voice/noise-suppressor";
+import type { Rollout } from "@/schemas/lookahead";
 
 export type SessionSnapshot = {
   world: WorldModel;
@@ -30,6 +32,7 @@ export type SessionSnapshot = {
   hearing: boolean;
   ended: boolean;
   logFile: string | null;
+  rollout: Rollout | null;
 };
 
 const FALLBACK_SPEECH = "I lost context for a second. Give me one moment.";
@@ -66,6 +69,8 @@ export class SessionRuntime {
   private activeDecisionId: string | null = null;
   private perceptionRetries = new Map<string, number>();
   private previousPage: string | null = null;
+  private rollout: Rollout | null = null;
+  private reasoningController: AbortController | null = null;
 
   constructor(private readonly publish: (snapshot: SessionSnapshot) => void) {
     const sessionId = crypto.randomUUID();
@@ -93,6 +98,7 @@ export class SessionRuntime {
       hearing: this.hearing,
       ended: this.ended,
       logFile: this.logFile,
+      rollout: this.rollout,
     };
   }
 
@@ -132,6 +138,10 @@ export class SessionRuntime {
 
   stop(): void {
     this.ended = true;
+    this.reasoningToken += 1;
+    this.perceptionToken += 1;
+    this.reasoningController?.abort();
+    this.reasoningController = null;
     if (this.sampleTimer) clearInterval(this.sampleTimer);
     this.stabilizer?.cancel();
     this.playback.stop();
@@ -165,6 +175,7 @@ export class SessionRuntime {
     this.discrepancy = undefined;
     this.trace = [];
     this.logFile = null;
+    this.rollout = null;
     this.publish(this.snapshot());
   }
 
@@ -184,6 +195,13 @@ export class SessionRuntime {
       this.metrics.successfulRecoveries += 1;
     }
     if (event.type === "AGENT_INTERRUPTED") this.metrics.interruptions += 1;
+    if (event.type === "LOOKAHEAD_RESULT") {
+      this.metrics.lookaheadRuns += event.status === "bypassed" ? 0 : 1;
+      this.metrics.lookaheadFallbacks += event.status === "fallback" ? 1 : 0;
+      this.metrics.lookaheadBranches += event.validBranchCount;
+      this.metrics.lookaheadModelCalls += event.modelCalls;
+      if (event.status !== "bypassed") this.metrics.lookaheadLatenciesMs.push(event.latencyMs);
+    }
     this.record(event);
     this.publish(this.snapshot());
   }
@@ -202,6 +220,7 @@ export class SessionRuntime {
           error: this.error,
           metrics: this.metrics,
           recentTurns: this.recentTurns,
+          rollout: this.rollout,
         },
         null,
         2,
@@ -349,28 +368,58 @@ export class SessionRuntime {
   private async reason(trigger: string): Promise<void> {
     if (!this.screenSharing && trigger === "screen") return;
     const token = ++this.reasoningToken;
+    this.reasoningController?.abort();
+    const controller = new AbortController();
+    this.reasoningController = controller;
+    this.rollout = null;
     const world = this.log.world;
+    const reasoningStartedAt = Date.now();
     this.apply({
       type: "REASONING_STARTED",
       basedOnScreenVersion: world.screen.semanticVersion,
       at: Date.now(),
     });
-    const started = Date.now();
+    const imageDataUrl = this.screenSharing && this.video ? captureJpeg(this.video) ?? undefined : undefined;
+    const context = buildReasoningContext(world, this.recentTurns, this.discrepancy, this.previousPage);
+    const signals = {
+      perceptionStatus: world.screen.perceptionStatus,
+      conflictingEvidence: world.flags.conflictingEvidence,
+      recoveryAttempts: world.workflow.recoveryAttempts,
+      userChangedGoal: detectGoalChange(world.conversation.latestUserUtterance),
+    };
+    if (imageDataUrl && isLookaheadEligible(context, signals)) {
+      this.apply({
+        type: "LOOKAHEAD_STARTED",
+        basedOnScreenVersion: world.screen.semanticVersion,
+        at: Date.now(),
+      });
+    }
     try {
-      const context = buildReasoningContext(world, this.recentTurns, this.discrepancy, this.previousPage);
       const result = await requestDecision({
         context,
-        signals: {
-          perceptionStatus: world.screen.perceptionStatus,
-          conflictingEvidence: world.flags.conflictingEvidence,
-          recoveryAttempts: world.workflow.recoveryAttempts,
-          userChangedGoal: detectGoalChange(world.conversation.latestUserUtterance),
-        },
+        signals,
+        imageDataUrl,
+        allowLookahead: true,
+        signal: controller.signal,
       });
       if (token !== this.reasoningToken) return;
-      this.metrics.reasoningLatenciesMs.push(Date.now() - started);
+      this.metrics.reasoningLatenciesMs.push(Date.now() - reasoningStartedAt);
       if (result.model === "deep") this.metrics.deepReasonerCalls += 1;
       else this.metrics.fastReasonerCalls += 1;
+      this.rollout = result.rollout;
+      if (result.rollout) {
+        this.apply({
+          type: "LOOKAHEAD_RESULT",
+          basedOnScreenVersion: result.rollout.basedOnScreenVersion,
+          status: result.rollout.status,
+          candidateCount: result.rollout.candidateCount,
+          validBranchCount: result.rollout.branches.filter((branch) => branch.valid).length,
+          modelCalls: result.rollout.modelCalls,
+          latencyMs: result.rollout.latencyMs,
+          reason: result.rollout.fallbackReason,
+          at: Date.now(),
+        });
+      }
       const verdict = validateDecision(result.decision, this.log.world.screen.semanticVersion);
       if (!verdict.ok) {
         this.apply({
@@ -389,17 +438,28 @@ export class SessionRuntime {
       this.apply({ type: "DECISION_READY", decision: result.decision, at: Date.now() });
       this.recentTurns = [...this.recentTurns, `Assistant: ${result.decision.response}`].slice(-4);
       if (result.decision.type === "wait" || !result.decision.response.trim()) return;
-      await this.speak(result.decision.id, result.decision.response);
+      await this.speak(result.decision.id, result.decision.response, result.decision.basedOnScreenVersion);
     } catch {
       if (token !== this.reasoningToken) return;
       this.error = FALLBACK_SPEECH;
       this.recentTurns = [...this.recentTurns, `Assistant: ${FALLBACK_SPEECH}`].slice(-4);
       this.publish(this.snapshot());
-      await this.speak(null, FALLBACK_SPEECH);
+      await this.speak(null, FALLBACK_SPEECH, this.log.world.screen.semanticVersion);
+    } finally {
+      if (this.reasoningController === controller) this.reasoningController = null;
     }
   }
 
-  private async speak(decisionId: string | null, text: string): Promise<void> {
+  private async speak(decisionId: string | null, text: string, basedOnScreenVersion: number): Promise<void> {
+    if (basedOnScreenVersion !== this.log.world.screen.semanticVersion) {
+      this.apply({
+        type: "DECISION_REJECTED_STALE",
+        decisionId: decisionId ?? "fallback",
+        currentScreenVersion: this.log.world.screen.semanticVersion,
+        at: Date.now(),
+      });
+      return;
+    }
     this.playback.stop();
     this.activeDecisionId = decisionId;
     if (decisionId) {
@@ -412,8 +472,9 @@ export class SessionRuntime {
         body: JSON.stringify({ text }),
       });
       if (!response.ok) throw new Error("TTS failed");
-      if (this.activeDecisionId !== decisionId) return;
+      if (this.activeDecisionId !== decisionId || basedOnScreenVersion !== this.log.world.screen.semanticVersion) return;
       const blob = await response.blob();
+      if (this.activeDecisionId !== decisionId || basedOnScreenVersion !== this.log.world.screen.semanticVersion) return;
       await this.playback.play(blob);
       if (this.log.world.agent.status === "speaking") {
         this.log = {
@@ -518,6 +579,10 @@ function traceDetail(event: SessionEvent): string {
       return `${event.screen.page} v${event.semanticVersion}`;
     case "REASONING_STARTED":
       return `v${event.basedOnScreenVersion}`;
+    case "LOOKAHEAD_STARTED":
+      return `v${event.basedOnScreenVersion}`;
+    case "LOOKAHEAD_RESULT":
+      return `${event.status} ${event.validBranchCount}/${event.candidateCount} branches, ${event.modelCalls} model calls`;
     case "DECISION_READY":
       return `${event.decision.type}: ${event.decision.response}`;
     case "DECISION_REJECTED_STALE":
