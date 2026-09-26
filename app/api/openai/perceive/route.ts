@@ -1,0 +1,52 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { extractOutputText, openaiJson, parseModelJson } from "@/lib/openai/client";
+import { MODELS } from "@/lib/openai/models";
+import { buildScreenPerceptionPrompt } from "@/prompts/screen-perception";
+import { ScreenStateSchema, screenStateJsonSchema } from "@/schemas/screen-state";
+
+const requestSchema = z.object({
+  imageDataUrl: z.string().min(1).max(6_000_000),
+  currentStep: z.string(),
+  expectedNextState: z.string().optional(),
+  previousScreenSummary: z.string().nullable(),
+});
+
+export async function POST(request: Request) {
+  try {
+    const body = requestSchema.parse(await request.json());
+    const prompt = buildScreenPerceptionPrompt({
+      currentStep: body.currentStep,
+      expectedNextState: body.expectedNextState,
+      previousScreenSummary: body.previousScreenSummary,
+    });
+    const payload = await openaiJson<{ output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> }>(
+      "/responses",
+      {
+        model: MODELS.perception,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: prompt },
+              { type: "input_image", image_url: body.imageDataUrl, detail: "auto" },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "screen_state",
+            strict: true,
+            schema: screenStateJsonSchema,
+          },
+        },
+      },
+    );
+    const screen = ScreenStateSchema.parse(parseModelJson(extractOutputText(payload)));
+    return NextResponse.json({ screen });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Perception failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
