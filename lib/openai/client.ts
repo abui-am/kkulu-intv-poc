@@ -6,7 +6,7 @@ export function requireApiKey(): string {
   return key;
 }
 
-export async function openaiJson<T>(path: string, body: unknown): Promise<T> {
+export async function openaiJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${OPENAI_URL}${path}`, {
     method: "POST",
     headers: {
@@ -14,6 +14,7 @@ export async function openaiJson<T>(path: string, body: unknown): Promise<T> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal,
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
