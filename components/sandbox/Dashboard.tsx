@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { emptyStory, type Story } from "@/components/sandbox/story";
 
 export function Dashboard({
+  story = emptyStory,
   onOpenSettings,
   onOpenApiKeys,
+  onInvite,
 }: {
+  story?: Story;
   onOpenSettings: () => void;
   onOpenApiKeys: () => void;
+  onInvite?: () => void;
 }) {
   const [time, setTime] = useState("--:--");
-  const [invited, setInvited] = useState(false);
   useEffect(() => {
     const update = () => setTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     update();
@@ -28,9 +32,9 @@ export function Dashboard({
       </header>
       <div className="grid grid-cols-3 gap-4">
         {[
-          ["Open pipeline", "$1.2M"],
-          ["Meetings", "18"],
-          ["Win rate", "27%"],
+          ["Open pipeline", story.githubConnected ? "$1.4M" : "$1.2M"],
+          ["Meetings", story.invitesSent ? "21" : "18"],
+          ["Win rate", story.githubConnected ? "31%" : "27%"],
         ].map(([label, value]) => (
           <article key={label} className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs uppercase tracking-wide text-slate-600">{label}</p>
@@ -40,23 +44,44 @@ export function Dashboard({
       </div>
       <div className="flex max-w-3xl flex-col gap-3 rounded-xl border border-slate-900 bg-slate-900 p-5 text-white">
         <p className="text-xs font-medium tracking-wide text-teal-200">RECOMMENDED</p>
-        <h2 className="text-lg font-semibold">Finish setup with an API token</h2>
-        <p className="text-sm text-slate-300">Most workspaces paste a token and skip the integration screens.</p>
-        <button
-          type="button"
-          onClick={onOpenApiKeys}
-          className="min-h-11 w-fit cursor-pointer rounded-md bg-white px-4 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
-        >
-          Create an API token
-        </button>
+        {story.githubConnected ? (
+          <>
+            <h2 className="text-lg font-semibold">Repository signals are in</h2>
+            <p className="text-sm text-slate-300">GitHub is connected. The pipeline numbers above include that activity.</p>
+          </>
+        ) : story.tokenSaved ? (
+          <>
+            <h2 className="text-lg font-semibold">The token is saved</h2>
+            <p className="text-sm text-slate-300">Repository access is still off, so the pipeline has not moved.</p>
+            <button
+              type="button"
+              onClick={onOpenApiKeys}
+              className="min-h-11 w-fit cursor-pointer rounded-md bg-white px-4 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+            >
+              Review the token
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="text-lg font-semibold">Finish setup with an API token</h2>
+            <p className="text-sm text-slate-300">Most workspaces paste a token and skip the integration screens.</p>
+            <button
+              type="button"
+              onClick={onOpenApiKeys}
+              className="min-h-11 w-fit cursor-pointer rounded-md bg-white px-4 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+            >
+              Create an API token
+            </button>
+          </>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setInvited(true)}
+          onClick={onInvite}
           className="min-h-11 cursor-pointer rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-800"
         >
-          Invite team
+          {story.invitesSent ? "Invite more people" : "Invite team"}
         </button>
         <button
           type="button"
@@ -66,9 +91,9 @@ export function Dashboard({
           Open Settings
         </button>
       </div>
-      {invited && (
+      {story.invitesSent && (
         <p className="max-w-xl rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Invites sent. GitHub is still not connected.
+          Invites sent. Meetings went up. GitHub is still not connected.
         </p>
       )}
     </section>

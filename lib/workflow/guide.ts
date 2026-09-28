@@ -85,14 +85,39 @@ export function outsideWindowInstruction(name: string): string {
   return `A ${safe} window popped open. Finish what you need there, then come back.`;
 }
 
+const SETTINGS_DETOURS: Record<string, string> = {
+  billing: "That's Billing. Payment doesn't connect GitHub. Click Integrations.",
+  "update payment method": "That's the payment method. It still doesn't connect GitHub. Click Integrations.",
+};
+
 export function scriptedInstructions(): string[] {
   const stalled = Object.values(ACTIONS).map((action) => stalledSharedInstruction(action.page, action.expectedPage));
   return [
     ...Object.values(ACTIONS).map((action) => action.instruction),
     ...STATIC_INSTRUCTIONS,
     ...stalled,
+    ...Object.values(SETTINGS_DETOURS),
     outsideWindowInstruction("GitHub"),
   ];
+}
+
+export function clickMatchesTarget(label: string, target: string): boolean {
+  const clicked = normalized(label);
+  const expected = normalized(target);
+  if (!clicked || !expected) return false;
+  return clicked.includes(expected) || (expected.includes(clicked) && clicked.length >= 4);
+}
+
+export function samePageDetour(page: string | null, label: string): string | null {
+  const canonical = canonicalizePage(page);
+  const action = actionForPage(canonical);
+  if (!canonical || !action || clickMatchesTarget(label, action.target)) return null;
+  if (canonical !== "Settings") return null;
+  return SETTINGS_DETOURS[normalized(label)] ?? null;
+}
+
+export function isSamePageDetour(guide: Guide | null): guide is Extract<Guide, { kind: "clarify" }> {
+  return guide?.kind === "clarify" && Object.values(SETTINGS_DETOURS).includes(guide.instruction);
 }
 
 function normalized(value: string): string {

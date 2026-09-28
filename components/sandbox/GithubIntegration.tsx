@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { emptyStory, type Story } from "@/components/sandbox/story";
 
-export function GithubIntegration({ onConnect }: { onConnect: () => void }) {
-  const [rejected, setRejected] = useState(false);
+export function GithubIntegration({
+  story = emptyStory,
+  onConnect,
+  onRejectInstall,
+}: {
+  story?: Story;
+  onConnect: () => void;
+  onRejectInstall?: () => void;
+}) {
   return (
     <section className="flex flex-1 flex-col gap-6 p-8">
       <p className="text-xs font-medium tracking-wide text-slate-600">INTEGRATIONS</p>
@@ -16,13 +23,13 @@ export function GithubIntegration({ onConnect }: { onConnect: () => void }) {
         <p className="text-sm text-slate-300">Includes private code, write access, and admin on the org.</p>
         <button
           type="button"
-          onClick={() => setRejected(true)}
+          onClick={onRejectInstall}
           className="min-h-11 w-fit cursor-pointer rounded-md bg-white px-4 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
         >
           Install on all repositories
         </button>
       </div>
-      {rejected && (
+      {story.installRejected && (
         <p className="max-w-xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           That install was rejected. Northstar will not take write access to every repository.
         </p>

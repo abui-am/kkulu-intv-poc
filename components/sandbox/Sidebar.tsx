@@ -1,10 +1,14 @@
 "use client";
 
+import { emptyStory, storyNotes, type Story } from "@/components/sandbox/story";
+
 export function Sidebar({
   page,
+  story = emptyStory,
   onNavigate,
 }: {
   page: string;
+  story?: Story;
   onNavigate: (page: "dashboard" | "settings") => void;
 }) {
   return (
@@ -34,7 +38,10 @@ export function Sidebar({
           </button>
         ))}
       </nav>
-      <p className="mt-auto px-5 py-4 text-xs text-slate-500">Workspace · Acme North</p>
+      <div className="mt-auto space-y-1 px-5 py-4 text-xs text-slate-400">
+        <p className="text-slate-500">Workspace · Acme North</p>
+        {storyNotes(story).map((note) => <p key={note}>{note}</p>)}
+      </div>
     </aside>
   );
 }

@@ -1,21 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { emptyStory, type Story } from "@/components/sandbox/story";
 
-export function ApiKeys() {
-  const [saved, setSaved] = useState(false);
+export function ApiKeys({
+  story = emptyStory,
+  onSaveToken,
+}: {
+  story?: Story;
+  onSaveToken?: () => void;
+}) {
   return (
     <section className="flex flex-1 flex-col gap-5 p-8">
       <h1 className="text-2xl font-semibold text-slate-900">API Keys</h1>
       <p className="max-w-lg text-sm text-slate-600">Create a credential for server jobs. This screen looks like the end of setup.</p>
       <button
         type="button"
-        onClick={() => setSaved(true)}
+        onClick={onSaveToken}
         className="min-h-11 w-fit cursor-pointer rounded-md bg-slate-900 px-4 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-800"
       >
         Create GitHub token
       </button>
-      {saved && (
+      {story.tokenSaved && (
         <div className="max-w-xl rounded-xl border border-emerald-200 bg-emerald-50 p-5">
           <p className="text-sm font-medium text-emerald-800">Token saved</p>
           <p className="mt-2 font-mono text-sm text-emerald-950">nsk_live_9f3a…c21</p>
@@ -32,7 +37,7 @@ export function ApiKeys() {
         <tbody className="font-mono text-slate-900">
           <tr>
             <td className="px-4 py-3">Production</td>
-            <td className="px-4 py-3">{saved ? "nsk_live_9f3a…c21" : "Not created"}</td>
+            <td className="px-4 py-3">{story.tokenSaved ? "nsk_live_9f3a…c21" : "Not created"}</td>
           </tr>
         </tbody>
       </table>

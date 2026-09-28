@@ -1,6 +1,6 @@
 import type { SessionEvent } from "@/lib/events/types";
 import { derivePerceptionStatus } from "@/lib/screen/perception";
-import { guideForObservation, outsideWindowInstruction } from "@/lib/workflow/guide";
+import { guideForObservation, isSamePageDetour, outsideWindowInstruction, samePageDetour, type Guide } from "@/lib/workflow/guide";
 import { canonicalizePage } from "@/lib/workflow/pages";
 import {
   githubWorkflow,
@@ -12,6 +12,13 @@ import type { WorldModel } from "@/lib/world/types";
 
 function looksLikeQuestion(text: string): boolean {
   return text.includes("?") || /^(why|what|how|when|where|who|does|do|can|could|explain|tell me|help me understand)\b/i.test(text.trim());
+}
+
+function keptGuide(world: WorldModel, nextPage: string | null, next: Guide): Guide {
+  const current = world.agent.activeGuide;
+  if (!isSamePageDetour(current)) return next;
+  if (canonicalizePage(nextPage) !== canonicalizePage(world.screen.page)) return next;
+  return current;
 }
 
 export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel {
@@ -77,12 +84,12 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         },
         agent: {
           ...world.agent,
-          activeGuide: guideForObservation({
+          activeGuide: keptGuide(world, event.screen.page, guideForObservation({
             page: event.screen.page,
             perceptionStatus,
             screenAvailable: true,
             review: event.review,
-          }),
+          })),
         },
         flags: {
           ...world.flags,
@@ -98,8 +105,17 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         agent: { ...world.agent, activeGuide: { kind: "clarify", instruction: "I lost my read on this screen. Keep the sandbox in view." } },
         flags: { ...world.flags, needsDeepReasoning: true },
       };
-    case "SANDBOX_INTERACTION":
-      return world;
+    case "SANDBOX_INTERACTION": {
+      const instruction = samePageDetour(world.screen.page, event.label);
+      if (!instruction) return world;
+      return {
+        ...world,
+        agent: {
+          ...world.agent,
+          activeGuide: { kind: "clarify", instruction },
+        },
+      };
+    }
     case "HOST_SURFACE": {
       if (event.state === "closed") return world;
       return {

@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { emptyStory, type Story } from "@/components/sandbox/story";
 
-export function GithubAuthorization({ onAuthorize }: { onAuthorize: () => void }) {
-  const [denied, setDenied] = useState(false);
+export function GithubAuthorization({
+  story = emptyStory,
+  onAuthorize,
+  onDeny,
+}: {
+  story?: Story;
+  onAuthorize: () => void;
+  onDeny?: () => void;
+}) {
   return (
     <section className="flex flex-1 flex-col gap-6 p-8">
       <h1 className="text-2xl font-semibold text-slate-900">GitHub Authorization</h1>
@@ -18,13 +25,13 @@ export function GithubAuthorization({ onAuthorize }: { onAuthorize: () => void }
         <p className="text-sm text-emerald-100">Private code, secrets, and the ability to push.</p>
         <button
           type="button"
-          onClick={() => setDenied(true)}
+          onClick={onDeny}
           className="min-h-11 w-fit cursor-pointer rounded-md bg-white px-4 text-sm font-medium text-emerald-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
         >
           Allow every private repository
         </button>
       </div>
-      {denied && (
+      {story.accessDenied && (
         <p className="max-w-xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           Access denied. Northstar cannot accept full repository access.
         </p>

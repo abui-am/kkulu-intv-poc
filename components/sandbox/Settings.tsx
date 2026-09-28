@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { emptyStory, type Story } from "@/components/sandbox/story";
 
 export function Settings({
+  story = emptyStory,
   onOpenIntegrations,
   onOpenApiKeys,
 }: {
+  story?: Story;
   onOpenIntegrations: () => void;
   onOpenApiKeys: () => void;
 }) {
@@ -26,8 +29,12 @@ export function Settings({
       </div>
       <div className="flex max-w-xl items-center justify-between gap-4 rounded-xl border border-slate-900 bg-slate-900 p-5 text-white">
         <div>
-          <p className="text-sm font-medium">Faster than Integrations</p>
-          <p className="mt-1 text-sm text-slate-300">Paste a personal token. No GitHub approval screen.</p>
+          <p className="text-sm font-medium">{story.tokenSaved ? "Token already saved" : "Faster than Integrations"}</p>
+          <p className="mt-1 text-sm text-slate-300">
+            {story.tokenSaved
+              ? "It is in API Keys. Repository access is still off."
+              : "Paste a personal token. No GitHub approval screen."}
+          </p>
         </div>
         <button
           type="button"
@@ -55,7 +62,11 @@ export function Settings({
       {tab === "team" && (
         <div className="max-w-lg rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-700">
           <h2 className="text-lg font-semibold text-slate-900">Team</h2>
-          <p className="mt-2">Three seats are filled. Adding people does not connect a repository.</p>
+          <p className="mt-2">
+            {story.invitesSent
+              ? "Three more invites are waiting. The repository is still dark."
+              : "Three seats are filled. Adding people does not connect a repository."}
+          </p>
         </div>
       )}
       {tab === "billing" && (

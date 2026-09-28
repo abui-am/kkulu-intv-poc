@@ -123,6 +123,25 @@ describe("GitHub guide and observed progress", () => {
     }).instruction).toBe(stalled);
   });
 
+  it("tells the user to leave Billing and click Integrations", () => {
+    let world = observe(createInitialWorldModel("session"), "Settings");
+    world = reduceWorld(world, { type: "SANDBOX_INTERACTION", label: "Billing", at: 2 });
+    expect(world.agent.activeGuide).toMatchObject({
+      kind: "clarify",
+      instruction: "That's Billing. Payment doesn't connect GitHub. Click Integrations.",
+    });
+    world = reduceWorld(world, {
+      type: "SCREEN_STATE_UPDATED",
+      screen: screen("Settings"),
+      semanticVersion: world.screen.semanticVersion + 1,
+      review: "normal",
+      at: 3,
+    });
+    expect(world.agent.activeGuide?.instruction).toBe("That's Billing. Payment doesn't connect GitHub. Click Integrations.");
+    world = reduceWorld(world, { type: "SANDBOX_PAGE_REPORTED", page: "Loading", at: 4 });
+    expect(world.agent.activeGuide).toMatchObject({ kind: "wait" });
+  });
+
   it("keeps the current instruction when a click is noticed, then follows a reported page", () => {
     let world = observe(createInitialWorldModel("session"), "Settings");
     const guide = world.agent.activeGuide;

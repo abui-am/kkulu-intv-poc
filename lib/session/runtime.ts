@@ -15,7 +15,7 @@ import { Stabilizer } from "@/lib/screen/stabilizer";
 import { ScreenStateSchema } from "@/schemas/screen-state";
 import { createMetrics, type SessionMetrics } from "@/lib/session/metrics";
 import { observeProgress } from "@/lib/workflow/progress";
-import { actionForPage, connectedEvidence, outsideWindowInstruction, targetVisible, type ScreenReview } from "@/lib/workflow/guide";
+import { actionForPage, clickMatchesTarget, connectedEvidence, outsideWindowInstruction, targetVisible, type ScreenReview } from "@/lib/workflow/guide";
 import { canonicalizePage } from "@/lib/workflow/pages";
 import { createInitialWorldModel } from "@/lib/world/initial-state";
 import type { WorldModel } from "@/lib/world/types";
@@ -392,11 +392,10 @@ export class SessionRuntime {
     const page = canonicalizePage(this.log.world.screen.page);
     const currentGuide = this.log.world.agent.activeGuide;
     const guide = currentGuide?.kind === "action" ? currentGuide : actionForPage(page);
+    const instructionBefore = currentGuide?.instruction ?? null;
     this.apply({ type: "SANDBOX_INTERACTION", label: safeLabel, at });
-    const clicked = safeLabel.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    const target = guide?.kind === "action" ? guide.target.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() : "";
-    this.pendingInteraction = guide?.kind === "action" && page &&
-      (clicked.includes(target) || (target.includes(clicked) && clicked.length >= 4))
+    const target = guide?.kind === "action" ? guide.target : "";
+    this.pendingInteraction = guide?.kind === "action" && page && clickMatchesTarget(safeLabel, target)
       ? { sourceId, originPage: page, expectedPage: guide.expectedPage, reportedPage: null, reportedAt: null, clickedAt: at, checks: 0 }
       : null;
     this.perceptionToken += 1;
@@ -409,6 +408,8 @@ export class SessionRuntime {
       this.lastClickAcknowledgedAt = Date.now();
       this.interrupt();
     }
+    const instruction = this.log.world.agent.activeGuide?.instruction ?? null;
+    if (instruction && instruction !== instructionBefore) this.issueGuide();
   }
 
   onSandboxPage(sourceId: string, page: string, at: number): void {
