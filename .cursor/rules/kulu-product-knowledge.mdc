@@ -1,0 +1,29 @@
+---
+description: Read Kulu product knowledge and name the use case before creating a feature
+alwaysApply: true
+---
+
+# Assess product knowledge before a feature
+
+Before proposing, designing, or implementing a feature, read `product-knowledge.md` and state the fit in the reply. Do this before writing code or a plan.
+
+Name one primary use case:
+
+- Admin onboarding: setup, configuration, integrations, permissions, rollout
+- Trial conversion: reach value in the trial window and capture intent plus blockers
+- End-user onboarding: role-based first workflow after an invite
+- Technical product support: diagnose, guide the next step, escalate with context
+
+Then say which outcome the feature serves: guided start, AI doing the repeatable work, a human kept for judgment or escalation, or trust. If none fit, say so and stop. Do not build a feature that sits outside those use cases.
+
+```text
+Use case: End-user onboarding
+Fit: Helps the invited user complete the first workflow
+Outcome: Guided start
+```
+
+```text
+Use case: none
+Fit: Adds a planner that chooses among imagined next clicks
+Outcome: none — Kulu already knows the next step from the screen
+```
