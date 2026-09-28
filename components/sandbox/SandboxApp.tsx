@@ -67,13 +67,22 @@ export function SandboxApp({
         onNavigate={(next) => setPage(next === "dashboard" ? "dashboard" : "settings")}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        {page === "dashboard" && <Dashboard onOpenSettings={() => setPage("settings")} />}
+        {page === "dashboard" && (
+          <Dashboard onOpenSettings={() => setPage("settings")} onOpenApiKeys={() => setPage("api-keys")} />
+        )}
         {page === "settings" && (
           <Settings onOpenIntegrations={openIntegrations} onOpenApiKeys={() => setPage("api-keys")} />
         )}
         {page === "loading" && (
-          <section className="flex flex-1 items-center justify-center">
+          <section className="flex flex-1 flex-col items-start justify-center gap-4 p-8">
             <p className="text-lg text-slate-600">Loading integrations…</p>
+            <button
+              type="button"
+              onClick={() => setPage("api-keys")}
+              className="min-h-11 cursor-pointer rounded-md bg-slate-900 px-4 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-800"
+            >
+              Skip the wait with a token
+            </button>
           </section>
         )}
         {page === "integrations" && <Integrations onSelectGithub={() => setPage("github")} />}
