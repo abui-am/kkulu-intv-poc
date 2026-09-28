@@ -1,14 +1,17 @@
 import type { SessionEvent } from "@/lib/events/types";
 import { derivePerceptionStatus } from "@/lib/screen/perception";
+import { guideForObservation, outsideWindowInstruction } from "@/lib/workflow/guide";
+import { canonicalizePage } from "@/lib/workflow/pages";
 import {
   githubWorkflow,
   isTerminalStep,
   nextStep,
+  workflowStepOrder,
 } from "@/lib/workflow/github-workflow";
 import type { WorldModel } from "@/lib/world/types";
 
 function looksLikeQuestion(text: string): boolean {
-  return text.includes("?") || /^(why|what|how|when|where|who|does|do|can|could)\b/i.test(text.trim());
+  return text.includes("?") || /^(why|what|how|when|where|who|does|do|can|could|explain|tell me|help me understand)\b/i.test(text.trim());
 }
 
 export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel {
@@ -16,7 +19,14 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
     case "SESSION_STARTED":
       return {
         ...world,
-        agent: { ...world.agent, status: "listening", speechInterrupted: false },
+        agent: {
+          ...world.agent,
+          status: "listening",
+          speechInterrupted: false,
+          activeGuide: world.agent.activeGuide?.kind === "action" || world.agent.activeGuide?.kind === "complete"
+            ? world.agent.activeGuide
+            : { kind: "wait", instruction: "Looking at the page…" },
+        },
       };
     case "USER_SPEECH_STARTED":
       return {
@@ -39,7 +49,7 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         conversation: {
           partialTranscript: "",
           latestUserUtterance: event.text,
-          activeQuestion: looksLikeQuestion(event.text) ? event.text : world.conversation.activeQuestion,
+          activeQuestion: looksLikeQuestion(event.text) ? event.text : null,
         },
       };
     case "FRAME_SAMPLED":
@@ -62,7 +72,17 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           summary: event.screen.summary,
           relevantElements: event.screen.relevantElements,
           perceptionStatus,
+          review: event.review ?? "normal",
           source: "vision",
+        },
+        agent: {
+          ...world.agent,
+          activeGuide: guideForObservation({
+            page: event.screen.page,
+            perceptionStatus,
+            screenAvailable: true,
+            review: event.review,
+          }),
         },
         flags: {
           ...world.flags,
@@ -71,18 +91,64 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         },
       };
     }
+    case "SCREEN_READ_FAILED":
+      return {
+        ...world,
+        screen: { ...world.screen, page: null, summary: null, relevantElements: [], perceptionStatus: "ambiguous", review: "normal" },
+        agent: { ...world.agent, activeGuide: { kind: "clarify", instruction: "I can't verify the current screen. Please keep the sandbox visible." } },
+        flags: { ...world.flags, needsDeepReasoning: true },
+      };
+    case "SANDBOX_INTERACTION":
+      return world;
+    case "HOST_SURFACE": {
+      if (event.state === "closed") return world;
+      return {
+        ...world,
+        flags: { ...world.flags, screenAvailable: true },
+        agent: {
+          ...world.agent,
+          activeGuide: { kind: "clarify", instruction: outsideWindowInstruction(event.name) },
+        },
+      };
+    }
+    case "SANDBOX_PAGE_REPORTED": {
+      const page = canonicalizePage(event.page);
+      if (page !== "Loading") return world;
+      return {
+        ...world,
+        screen: {
+          ...world.screen,
+          page,
+          summary: "Integrations is loading",
+          perceptionStatus: "clear",
+          review: "normal",
+          observedAt: event.at,
+        },
+        flags: { ...world.flags, screenAvailable: true },
+        agent: {
+          ...world.agent,
+          activeGuide: guideForObservation({ page, perceptionStatus: "clear", screenAvailable: true }),
+        },
+      };
+    }
     case "SCREEN_UNAVAILABLE":
       return {
         ...world,
+        conversation: { ...world.conversation, activeQuestion: null, partialTranscript: "" },
         screen: {
           ...world.screen,
           page: null,
           summary: null,
           relevantElements: [],
           perceptionStatus: "unknown",
+          review: "normal",
           observedAt: event.at,
         },
         flags: { ...world.flags, screenAvailable: false },
+        agent: {
+          ...world.agent,
+          activeGuide: guideForObservation({ page: null, perceptionStatus: "unknown", screenAvailable: false }),
+        },
       };
     case "REASONING_STARTED":
       return {
@@ -115,6 +181,8 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
       };
     case "DECISION_REJECTED_STALE":
       return world;
+    case "TRANSITION_REFLECTED":
+      return { ...world, reflection: event.reflection };
     case "AGENT_SPEECH_STARTED":
       return {
         ...world,
@@ -140,6 +208,7 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         workflow: {
           currentStep: upcoming ?? event.stepId,
           completedSteps: completed,
+          skippedSteps: world.workflow.skippedSteps.filter((step) => step !== event.stepId),
           expectedNextState: upcoming
             ? githubWorkflow[upcoming].expectedScreen
             : githubWorkflow[event.stepId].expectedScreen,
@@ -154,6 +223,47 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
       };
     }
+    case "WORKFLOW_PROGRESS_RECONCILED": {
+      const completedSteps = workflowStepOrder.filter(
+        (step) => step === event.observedStep || world.workflow.completedSteps.includes(step),
+      );
+      const skippedSteps = workflowStepOrder.filter(
+        (step) => !completedSteps.includes(step) &&
+          (world.workflow.skippedSteps.includes(step) || event.skippedSteps.includes(step)),
+      );
+      const currentIndex = workflowStepOrder.indexOf(world.workflow.currentStep);
+      const observedIndex = workflowStepOrder.indexOf(event.observedStep);
+      const upcoming = nextStep(event.observedStep);
+      const terminal = isTerminalStep(event.observedStep);
+      const currentStep = terminal
+        ? event.observedStep
+        : observedIndex >= currentIndex && upcoming
+          ? upcoming
+          : world.workflow.currentStep;
+      return {
+        ...world,
+        goal: { ...world.goal, status: terminal ? "completed" : world.goal.status },
+        workflow: {
+          ...world.workflow,
+          currentStep,
+          completedSteps,
+          skippedSteps,
+          expectedNextState: githubWorkflow[currentStep].expectedScreen,
+          recoveryAttempts: 0,
+        },
+        expectation: {
+          expectedScreenState: githubWorkflow[currentStep].expectedScreen,
+          createdFromScreenVersion: world.screen.semanticVersion,
+        },
+        flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
+      };
+    }
+    case "WORKFLOW_ON_PATH":
+      return {
+        ...world,
+        workflow: { ...world.workflow, recoveryAttempts: 0 },
+        flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
+      };
     case "WORKFLOW_DEVIATION":
       return {
         ...world,

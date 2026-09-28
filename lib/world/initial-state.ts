@@ -11,6 +11,7 @@ export function createInitialWorldModel(sessionId: string): WorldModel {
     workflow: {
       currentStep: "openSettings",
       completedSteps: [],
+      skippedSteps: [],
       expectedNextState: "Settings",
       recoveryAttempts: 0,
     },
@@ -22,6 +23,7 @@ export function createInitialWorldModel(sessionId: string): WorldModel {
       summary: null,
       relevantElements: [],
       perceptionStatus: "unknown",
+      review: "normal",
       source: "vision",
     },
     conversation: {
@@ -33,12 +35,14 @@ export function createInitialWorldModel(sessionId: string): WorldModel {
       status: "idle",
       lastDecision: null,
       lastInstruction: null,
+      activeGuide: null,
       speechInterrupted: false,
     },
     expectation: {
       expectedScreenState: "Settings",
       createdFromScreenVersion: null,
     },
+    reflection: null,
     flags: {
       conflictingEvidence: false,
       needsDeepReasoning: false,

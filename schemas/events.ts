@@ -50,22 +50,6 @@ export const SessionEventSchema = z.discriminatedUnion("type", [
     at: z.number(),
   }),
   z.object({
-    type: z.literal("LOOKAHEAD_STARTED"),
-    basedOnScreenVersion: z.number(),
-    at: z.number(),
-  }),
-  z.object({
-    type: z.literal("LOOKAHEAD_RESULT"),
-    basedOnScreenVersion: z.number(),
-    status: z.enum(["completed", "bypassed", "fallback"]),
-    candidateCount: z.number(),
-    validBranchCount: z.number(),
-    modelCalls: z.number(),
-    latencyMs: z.number(),
-    reason: z.string().nullable(),
-    at: z.number(),
-  }),
-  z.object({
     type: z.literal("DECISION_READY"),
     decision: AgentDecisionSchema,
     at: z.number(),

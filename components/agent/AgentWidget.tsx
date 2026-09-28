@@ -1,118 +1,119 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import {
-  DecisionPanel,
-  EventLogPanel,
-  RolloutPanel,
-  ScreenStatePanel,
-  WorldModelPanel,
-} from "@/components/debug/DebugPanels";
-import { AgentPresence } from "@/components/session/AgentPresence";
-import type { SessionSnapshot } from "@/lib/session/runtime";
-import { SessionRuntime } from "@/lib/session/runtime";
-import { createMetrics } from "@/lib/session/metrics";
-import { createInitialWorldModel } from "@/lib/world/initial-state";
+import { useState, type ReactNode } from "react";
+import { GuidePanel } from "@/components/session/GuidePanel";
+import type { MirroredSession } from "@/lib/session/channel";
+import type { AgentStatus } from "@/lib/world/types";
 
-const initial: SessionSnapshot = {
-  world: createInitialWorldModel("pending"),
-  events: [],
-  metrics: createMetrics(0),
-  recentTurns: [],
-  error: null,
-  screenSharing: false,
-  hearing: false,
-  ended: false,
-  logFile: null,
-  rollout: null,
+const labels: Record<AgentStatus, string> = {
+  idle: "Idle",
+  listening: "Listening",
+  thinking: "Thinking",
+  speaking: "Speaking",
 };
 
-export function AgentWidget() {
-  const runtimeRef = useRef<SessionRuntime | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [snapshot, setSnapshot] = useState<SessionSnapshot>(initial);
-  const [running, setRunning] = useState(false);
-  const [traceOpen, setTraceOpen] = useState(false);
-  const mode = !running ? "idle" : snapshot.hearing ? "hearing" : snapshot.world.agent.status;
-  const line =
-    mode === "hearing"
-      ? snapshot.world.conversation.partialTranscript || "Hearing you"
-      : mode === "thinking"
-        ? "Thinking"
-        : snapshot.world.agent.lastInstruction || (mode === "listening" ? "Listening" : "Talk to me");
-
-  function runtime(): SessionRuntime {
-    runtimeRef.current ??= new SessionRuntime(setSnapshot);
-    return runtimeRef.current;
-  }
-
-  const subscribeLevel = useCallback((listener: (level: number) => void) => {
-    runtimeRef.current ??= new SessionRuntime(setSnapshot);
-    return runtimeRef.current.subscribeLevel(listener);
-  }, []);
+export function AgentWidget({
+  session,
+  noticing,
+  running,
+  sharing,
+  error,
+  onStart,
+  onStop,
+  onShare,
+  onReset,
+  allowShare,
+  debug,
+}: {
+  session: MirroredSession | null;
+  noticing: boolean;
+  running: boolean;
+  sharing: boolean;
+  error: string | null;
+  onStart: () => void;
+  onStop: () => void;
+  onShare: () => void;
+  onReset: () => void;
+  allowShare: boolean;
+  debug: ReactNode;
+}) {
+  const [debugOpen, setDebugOpen] = useState(false);
+  const active = Boolean(session?.active);
+  const mode = !active
+    ? "idle"
+    : session?.status === "speaking"
+      ? "speaking"
+      : session?.status === "thinking"
+        ? "thinking"
+        : session?.hearing
+          ? "hearing"
+          : "listening";
+  const label = active ? labels[session?.status === "speaking" || session?.status === "thinking" ? session.status : "listening"] : "Idle";
 
   return (
-    <>
-      <div className="fixed right-5 bottom-24 z-30 flex items-end gap-3">
-        <div className="w-64 rounded-2xl bg-slate-950 p-3 text-white shadow-lg">
-          <p className="text-[10px] font-medium tracking-[0.14em] text-teal-200">AGENT</p>
-          <p className="mt-1 min-h-10 text-sm leading-5">{line}</p>
-          {snapshot.error && <p className="mt-2 text-xs leading-5 text-amber-200">{snapshot.error}</p>}
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              className="min-h-11 flex-1 cursor-pointer rounded-md bg-white/10 px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
-              onClick={() => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                if (!video || !canvas) return;
-                if (!running) {
-                  setRunning(true);
-                  runtime().start();
-                }
-                void runtime().shareScreen(video, canvas);
-              }}
-            >
-              {snapshot.screenSharing ? "Seeing this window" : "Let me see this window"}
-            </button>
-            <button
-              type="button"
-              className="min-h-11 cursor-pointer rounded-md px-2 text-xs text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
-              onClick={() => setTraceOpen((open) => !open)}
-            >
-              {traceOpen ? "Hide" : "Trace"}
-            </button>
-          </div>
-        </div>
-        <AgentPresence
-          mode={mode}
-          subscribeLevel={subscribeLevel}
-          activateLabel={running ? `Agent is ${mode}. Stop` : "Start the agent"}
-          onActivate={() => {
-            if (running) {
-              runtime().stop();
-              setRunning(false);
-              return;
-            }
-            setRunning(true);
-            runtime().start();
-          }}
-        />
+    <aside className="fixed right-5 bottom-5 z-50 w-80 rounded-2xl bg-slate-950 p-3 text-white shadow-2xl" aria-label="Agent">
+      <p className="text-[10px] font-medium tracking-[0.14em] text-teal-200">AGENT</p>
+      <div className="mt-2 flex items-center gap-2" role="status" aria-live="polite">
+        {noticing ? (
+          <span className="agent-dots" aria-label="Noticed the click">
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : (
+          <span className={`agent-mark agent-mark-${mode}`} aria-hidden="true">
+            <span className="agent-mark-core" />
+          </span>
+        )}
+        <p className="text-xs font-medium text-teal-100">{noticing ? "Noticed" : label}</p>
       </div>
-      {traceOpen && (
-        <aside className="fixed top-0 right-0 z-20 h-screen w-[24rem] max-w-full overflow-auto border-l border-slate-200 bg-white p-5 pb-28 text-slate-900 shadow-xl">
-          <WorldModelPanel world={snapshot.world} lastEvent={snapshot.events.at(-1) ?? null} />
-          <div className="mt-6 space-y-6">
-            <RolloutPanel rollout={snapshot.rollout} />
-            <ScreenStatePanel world={snapshot.world} />
-            <DecisionPanel world={snapshot.world} />
-            <EventLogPanel events={snapshot.events} />
-          </div>
-        </aside>
+      {active && session ? (
+        <div className="mt-3">
+          <GuidePanel
+            guide={session.guide}
+            verifiedCount={session.verifiedCount}
+            skippedCount={session.skippedCount}
+            compact
+          />
+        </div>
+      ) : (
+        <p className="mt-2 text-sm leading-5">Start the session to begin.</p>
       )}
-      <video ref={videoRef} className="hidden" autoPlay muted playsInline />
-      <canvas ref={canvasRef} className="hidden" width={320} height={180} />
-    </>
+      {error && <p className="mt-3 text-sm leading-5 text-amber-200">{error}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {!running ? (
+          <button type="button" onClick={onStart} className="min-h-11 cursor-pointer rounded-md bg-white px-3 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
+            Start
+          </button>
+        ) : (
+          <button type="button" onClick={onStop} className="min-h-11 cursor-pointer rounded-md bg-white/10 px-3 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
+            Stop
+          </button>
+        )}
+        {allowShare && running && !sharing && (
+          <button type="button" onClick={onShare} className="min-h-11 cursor-pointer rounded-md bg-white/10 px-3 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
+            Share entire screen
+          </button>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <button type="button" onClick={onReset} className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
+          Reset session
+        </button>
+        <button
+          type="button"
+          aria-expanded={debugOpen}
+          onClick={() => setDebugOpen((open) => !open)}
+          className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+        >
+          {debugOpen ? "Hide debug" : "Debug"}
+        </button>
+      </div>
+      {debugOpen && (
+        <div className="mt-2 max-h-[50vh] space-y-3 overflow-auto rounded-xl bg-white p-3 text-slate-900">
+          {debug}
+        </div>
+      )}
+    </aside>
   );
 }

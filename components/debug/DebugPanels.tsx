@@ -1,11 +1,11 @@
 "use client";
 
 import type { SessionEvent } from "@/lib/events/types";
+import type { Rollout } from "@/schemas/lookahead";
 import type { SessionMetrics } from "@/lib/session/metrics";
 import { median } from "@/lib/session/metrics";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/workflow/github-workflow";
 import type { WorldModel } from "@/lib/world/types";
-import type { Rollout } from "@/schemas/lookahead";
 
 function formatTime(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -17,18 +17,18 @@ function describe(event: SessionEvent): string {
       return `SCREEN_STATE_UPDATED v${event.semanticVersion}`;
     case "REASONING_STARTED":
       return `REASONING_STARTED v${event.basedOnScreenVersion}`;
-    case "LOOKAHEAD_STARTED":
-      return `LOOKAHEAD_STARTED v${event.basedOnScreenVersion}`;
-    case "LOOKAHEAD_RESULT":
-      return `LOOKAHEAD_RESULT ${event.status} ${event.validBranchCount}/${event.candidateCount}`;
     case "DECISION_READY":
       return `DECISION_READY based_on=v${event.decision.basedOnScreenVersion}`;
     case "DECISION_REJECTED_STALE":
       return `DECISION_REJECTED_STALE current=v${event.currentScreenVersion}`;
     case "WORKFLOW_STEP_VERIFIED":
       return `WORKFLOW_STEP_VERIFIED ${event.stepId}`;
+    case "WORKFLOW_PROGRESS_RECONCILED":
+      return `WORKFLOW_PROGRESS_RECONCILED ${event.observedStep}${event.skippedSteps.length ? ` (skipped ${event.skippedSteps.join(", ")})` : ""}`;
     case "WORKFLOW_DEVIATION":
       return `WORKFLOW_DEVIATION expected ${event.expected} observed ${event.observed}`;
+    case "TRANSITION_REFLECTED":
+      return `TRANSITION_REFLECTED ${event.reflection.status} · ${event.reflection.expectedPage}`;
     case "FRAME_SAMPLED":
       return `FRAME_SAMPLED v${event.frameVersion} Δ${event.changeRatio.toFixed(3)}`;
     default:
@@ -56,6 +56,10 @@ export function WorldModelPanel({ world, lastEvent }: { world: WorldModel; lastE
           <dd className="font-medium text-slate-900">{world.workflow.currentStep}</dd>
         </div>
         <div>
+          <dt className="text-xs text-slate-600">Guide from observed screen</dt>
+          <dd className="font-medium text-slate-900">{world.agent.activeGuide?.instruction ?? "Waiting for screen"}</dd>
+        </div>
+        <div>
           <dt className="text-xs text-slate-600">Expected next</dt>
           <dd className="font-medium text-slate-900">{world.workflow.expectedNextState ?? "—"}</dd>
         </div>
@@ -63,13 +67,14 @@ export function WorldModelPanel({ world, lastEvent }: { world: WorldModel; lastE
       <ol className="space-y-1">
         {workflowStepOrder.map((step) => {
           const done = world.workflow.completedSteps.includes(step);
+          const skipped = world.workflow.skippedSteps.includes(step);
           const current = world.workflow.currentStep === step && !done;
           return (
             <li
               key={step}
               className={`rounded-md px-2 py-1 ${current ? "bg-teal-50 font-medium text-teal-950" : "text-slate-700"}`}
             >
-              {done ? "✓" : "○"} {workflowStepLabels[step]}
+              {done ? "✓" : skipped ? "↷" : "○"} {workflowStepLabels[step]}{skipped ? " · screen not seen" : ""}
             </li>
           );
         })}
@@ -127,6 +132,32 @@ export function ScreenStatePanel({ world }: { world: WorldModel }) {
     <section className="text-sm">
       <h2 className="font-semibold">Screen state</h2>
       <p className="mt-2 leading-6 text-slate-700">{world.screen.summary ?? "No observation yet"}</p>
+    </section>
+  );
+}
+
+export function ReflectionPanel({ world }: { world: WorldModel }) {
+  const reflection = world.reflection;
+  return (
+    <section className="space-y-2 text-sm">
+      <h2 className="font-semibold">Last transition reflection</h2>
+      {!reflection ? (
+        <p className="text-slate-600">No guided transition observed yet</p>
+      ) : (
+        <>
+          <p className={reflection.status === "mismatch" ? "font-medium text-amber-800" : "font-medium text-slate-800"}>
+            {reflection.status} · expected {reflection.expectedPage} · observed {reflection.observedPage ?? "unknown"}
+          </p>
+          {reflection.result && (
+            <dl className="space-y-1 text-xs leading-5 text-slate-700">
+              <div><dt className="font-medium">Before</dt><dd>{reflection.result.beforeDescription}</dd></div>
+              <div><dt className="font-medium">After</dt><dd>{reflection.result.afterDescription}</dd></div>
+              <div><dt className="font-medium">Change</dt><dd>{reflection.result.observedChange}</dd></div>
+              <div><dt className="font-medium">Alignment</dt><dd>{reflection.result.alignment}</dd></div>
+            </dl>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -195,6 +226,7 @@ export function MetricsSummary({ metrics }: { metrics: SessionMetrics }) {
         <li>Interruptions: {metrics.interruptions}</li>
         <li>Lookahead runs / fallbacks: {metrics.lookaheadRuns} / {metrics.lookaheadFallbacks}</li>
         <li>Predicted branches / reasoning model calls: {metrics.lookaheadBranches} / {metrics.lookaheadModelCalls}</li>
+        <li>Reflections / mismatches / fallbacks: {metrics.reflectionCalls} / {metrics.reflectionMismatches} / {metrics.reflectionFallbacks}</li>
         <li>Median lookahead latency: {median(metrics.lookaheadLatenciesMs) == null ? "—" : `${Math.round(median(metrics.lookaheadLatenciesMs) ?? 0)} ms`}</li>
         <li>Median reasoning latency: {reasoning == null ? "—" : `${Math.round(reasoning)} ms`}</li>
       </ul>

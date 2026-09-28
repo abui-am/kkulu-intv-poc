@@ -80,8 +80,112 @@ body {
   }
 }
 
+.agent-mark {
+  display: grid;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex: none;
+  place-items: center;
+}
+
+.agent-mark-core {
+  height: 0.7rem;
+  width: 0.7rem;
+  border-radius: 9999px;
+  background: #5eead4;
+}
+
+.agent-mark-idle .agent-mark-core {
+  background: rgb(148 163 184 / 0.7);
+}
+
+.agent-mark-listening .agent-mark-core {
+  animation: agent-listen 1.8s ease-in-out infinite;
+}
+
+.agent-mark-hearing .agent-mark-core {
+  animation: agent-listen 0.7s ease-in-out infinite;
+}
+
+.agent-mark-speaking .agent-mark-core {
+  animation: agent-speak-mark 0.72s ease-in-out infinite;
+}
+
+.agent-mark-thinking .agent-mark-core {
+  animation: agent-think 1s ease-in-out infinite;
+}
+
+.agent-dots {
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22rem;
+}
+
+.agent-dots span {
+  height: 0.38rem;
+  width: 0.38rem;
+  border-radius: 9999px;
+  background: #5eead4;
+  animation: agent-dot 0.9s ease-in-out infinite;
+}
+
+.agent-dots-on-light span {
+  background: #0f766e;
+}
+
+.agent-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.agent-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes agent-listen {
+  50% {
+    transform: scale(0.82);
+    opacity: 0.5;
+  }
+}
+
+@keyframes agent-speak-mark {
+  0%,
+  100% {
+    transform: scale(0.75);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 6px rgb(94 234 212 / 0.28);
+  }
+}
+
+@keyframes agent-think {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes agent-dot {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .agent-orb span {
+  .agent-orb span,
+  .agent-mark-core,
+  .agent-dots span {
     animation: none;
+    opacity: 1;
   }
 }

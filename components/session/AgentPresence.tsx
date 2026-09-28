@@ -12,11 +12,13 @@ const labels: Record<string, string> = {
 
 export function AgentPresence({
   mode,
+  noticing = false,
   subscribeLevel,
   onActivate,
   activateLabel,
 }: {
   mode: string;
+  noticing?: boolean;
   subscribeLevel: (listener: (level: number) => void) => () => void;
   onActivate?: () => void;
   activateLabel?: string;
@@ -30,9 +32,15 @@ export function AgentPresence({
   }, [subscribeLevel]);
 
   return (
-    <div className="flex items-center gap-3">
-      <p className="text-sm font-medium text-slate-800">{labels[mode] ?? mode}</p>
-      {onActivate ? (
+    <div className="flex items-center gap-3" role="status" aria-live="polite">
+      <p className="text-sm font-medium text-slate-800">{noticing ? "Noticed" : labels[mode] ?? mode}</p>
+      {noticing ? (
+        <span className="agent-dots agent-dots-on-light" aria-label="Noticed the click">
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : onActivate ? (
         <button
           type="button"
           aria-label={activateLabel}

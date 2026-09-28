@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { ApiKeys } from "@/components/sandbox/ApiKeys";
 import { Dashboard } from "@/components/sandbox/Dashboard";
 import { GithubAuthorization } from "@/components/sandbox/GithubAuthorization";
@@ -8,7 +8,6 @@ import { GithubIntegration } from "@/components/sandbox/GithubIntegration";
 import { Integrations } from "@/components/sandbox/Integrations";
 import { Settings } from "@/components/sandbox/Settings";
 import { Sidebar } from "@/components/sandbox/Sidebar";
-import { AgentWidget } from "@/components/agent/AgentWidget";
 
 type SandboxPage =
   | "dashboard"
@@ -21,8 +20,40 @@ type SandboxPage =
   | "api-keys"
   | "ambiguous";
 
-export function SandboxApp() {
+const PAGE_LABELS: Record<SandboxPage, string> = {
+  dashboard: "Dashboard",
+  settings: "Settings",
+  loading: "Loading",
+  integrations: "Integrations",
+  github: "GitHub Integration",
+  authorize: "GitHub Authorization",
+  connected: "GitHub Connected",
+  "api-keys": "API Keys",
+  ambiguous: "Unknown",
+};
+
+export function SandboxApp({
+  productRef,
+  onInteraction,
+  onPage,
+}: {
+  productRef: RefObject<HTMLDivElement | null>;
+  onInteraction: (label: string, at: number) => void;
+  onPage: (page: string, at: number) => void;
+}) {
   const [page, setPage] = useState<SandboxPage>("dashboard");
+
+  useEffect(() => {
+    onPage(PAGE_LABELS[page], Date.now());
+  }, [onPage, page]);
+
+  function reportClick(event: React.MouseEvent<HTMLDivElement>): void {
+    const button = (event.target as HTMLElement).closest("button");
+    if (!button || !event.currentTarget.contains(button)) return;
+    const label = button.textContent?.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!label) return;
+    onInteraction(label, Date.now());
+  }
 
   function openIntegrations() {
     setPage("loading");
@@ -30,7 +61,7 @@ export function SandboxApp() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-100 text-slate-900">
+    <div ref={productRef} className="flex min-h-screen min-w-0 flex-1 bg-slate-100 text-slate-900" onClick={reportClick}>
       <Sidebar
         page={page === "dashboard" ? "dashboard" : "settings"}
         onNavigate={(next) => setPage(next === "dashboard" ? "dashboard" : "settings")}
@@ -75,7 +106,6 @@ export function SandboxApp() {
           </span>
         </footer>
       </div>
-      <AgentWidget />
     </div>
   );
 }

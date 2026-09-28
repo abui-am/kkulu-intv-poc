@@ -1,6 +1,8 @@
 import type { AgentDecision } from "@/schemas/agent-decision";
 import type { ScreenState } from "@/schemas/screen-state";
 import type { WorkflowStepId } from "@/lib/world/types";
+import type { ReflectionAssessment } from "@/lib/agent/reflection";
+import type { ScreenReview } from "@/lib/workflow/guide";
 
 export type SessionEvent =
   | {
@@ -42,8 +44,13 @@ export type SessionEvent =
       type: "SCREEN_STATE_UPDATED";
       screen: ScreenState;
       semanticVersion: number;
+      review?: ScreenReview;
       at: number;
     }
+  | { type: "SCREEN_READ_FAILED"; at: number }
+  | { type: "SANDBOX_INTERACTION"; label: string; at: number }
+  | { type: "SANDBOX_PAGE_REPORTED"; page: string; at: number }
+  | { type: "HOST_SURFACE"; name: string; state: "opened" | "closed"; at: number }
   | {
       type: "SCREEN_UNAVAILABLE";
       at: number;
@@ -51,22 +58,6 @@ export type SessionEvent =
   | {
       type: "REASONING_STARTED";
       basedOnScreenVersion: number;
-      at: number;
-    }
-  | {
-      type: "LOOKAHEAD_STARTED";
-      basedOnScreenVersion: number;
-      at: number;
-    }
-  | {
-      type: "LOOKAHEAD_RESULT";
-      basedOnScreenVersion: number;
-      status: "completed" | "bypassed" | "fallback";
-      candidateCount: number;
-      validBranchCount: number;
-      modelCalls: number;
-      latencyMs: number;
-      reason: string | null;
       at: number;
     }
   | {
@@ -96,9 +87,21 @@ export type SessionEvent =
       at: number;
     }
   | {
+      type: "WORKFLOW_PROGRESS_RECONCILED";
+      observedStep: WorkflowStepId;
+      skippedSteps: WorkflowStepId[];
+      at: number;
+    }
+  | { type: "WORKFLOW_ON_PATH"; at: number }
+  | {
       type: "WORKFLOW_DEVIATION";
       expected: string;
       observed: string;
+      at: number;
+    }
+  | {
+      type: "TRANSITION_REFLECTED";
+      reflection: ReflectionAssessment;
       at: number;
     };
 

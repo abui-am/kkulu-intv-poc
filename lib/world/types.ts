@@ -1,4 +1,6 @@
 import type { AgentDecision } from "@/schemas/agent-decision";
+import type { ReflectionAssessment } from "@/lib/agent/reflection";
+import type { Guide, ScreenReview } from "@/lib/workflow/guide";
 
 export type WorkflowStepId =
   | "openSettings"
@@ -32,6 +34,7 @@ export type WorldModel = {
   workflow: {
     currentStep: WorkflowStepId;
     completedSteps: WorkflowStepId[];
+    skippedSteps: WorkflowStepId[];
     expectedNextState?: ScreenSemanticState;
     recoveryAttempts: number;
   };
@@ -44,6 +47,7 @@ export type WorldModel = {
     summary: string | null;
     relevantElements: ScreenElement[];
     perceptionStatus: PerceptionStatus;
+    review: ScreenReview;
     source: "vision";
   };
 
@@ -57,6 +61,7 @@ export type WorldModel = {
     status: AgentStatus;
     lastDecision: AgentDecision | null;
     lastInstruction: string | null;
+    activeGuide: Guide | null;
     speechInterrupted: boolean;
   };
 
@@ -64,6 +69,8 @@ export type WorldModel = {
     expectedScreenState: ScreenSemanticState | null;
     createdFromScreenVersion: number | null;
   };
+
+  reflection: ReflectionAssessment | null;
 
   flags: {
     conflictingEvidence: boolean;

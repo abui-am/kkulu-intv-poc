@@ -1,11 +1,14 @@
 import type { ScreenElement } from "@/lib/world/types";
 import type { WorldModel } from "@/lib/world/types";
+import type { ReflectionAssessment } from "@/lib/agent/reflection";
+import type { Guide } from "@/lib/workflow/guide";
 
 export type ReasoningContext = {
   sessionObjective: string;
   workflow: {
     currentStep: string;
     completedSteps: string[];
+    skippedSteps: string[];
     expectedNextState?: string;
   };
   latestUserUtterance: string | null;
@@ -25,6 +28,8 @@ export type ReasoningContext = {
     expected: string;
     observed: string;
   };
+  reflection: ReflectionAssessment | null;
+  guide: Guide | null;
 };
 
 const CONVERSATION_LIMIT = 4;
@@ -40,6 +45,7 @@ export function buildReasoningContext(
     workflow: {
       currentStep: world.workflow.currentStep,
       completedSteps: world.workflow.completedSteps,
+      skippedSteps: world.workflow.skippedSteps,
       expectedNextState: world.workflow.expectedNextState,
     },
     latestUserUtterance: world.conversation.latestUserUtterance,
@@ -56,5 +62,7 @@ export function buildReasoningContext(
     lastInstruction: world.agent.lastInstruction,
     activeQuestion: world.conversation.activeQuestion,
     discrepancy,
+    reflection: world.reflection,
+    guide: world.agent.activeGuide,
   };
 }

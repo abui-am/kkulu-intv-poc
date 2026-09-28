@@ -9,13 +9,16 @@ export type SessionMetrics = {
   workflowDeviations: number;
   successfulRecoveries: number;
   interruptions: number;
+  reflectionCalls: number;
+  reflectionMismatches: number;
+  reflectionFallbacks: number;
   lookaheadRuns: number;
   lookaheadFallbacks: number;
   lookaheadBranches: number;
   lookaheadModelCalls: number;
+  lookaheadLatenciesMs: number[];
   reasoningLatenciesMs: number[];
   perceptionLatenciesMs: number[];
-  lookaheadLatenciesMs: number[];
 };
 
 export function createMetrics(startedAt = Date.now()): SessionMetrics {
@@ -30,13 +33,16 @@ export function createMetrics(startedAt = Date.now()): SessionMetrics {
     workflowDeviations: 0,
     successfulRecoveries: 0,
     interruptions: 0,
+    reflectionCalls: 0,
+    reflectionMismatches: 0,
+    reflectionFallbacks: 0,
     lookaheadRuns: 0,
     lookaheadFallbacks: 0,
     lookaheadBranches: 0,
     lookaheadModelCalls: 0,
+    lookaheadLatenciesMs: [],
     reasoningLatenciesMs: [],
     perceptionLatenciesMs: [],
-    lookaheadLatenciesMs: [],
   };
 }
 

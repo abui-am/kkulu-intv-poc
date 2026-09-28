@@ -1,5 +1,5 @@
-import { SandboxApp } from "@/components/sandbox/SandboxApp";
+import { redirect } from "next/navigation";
 
 export default function SandboxPage() {
-  return <SandboxApp />;
+  redirect("/");
 }

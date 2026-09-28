@@ -1,6 +1,5 @@
 import type { ReasoningContext } from "@/lib/agent/context-builder";
 import { AgentDecisionSchema, type AgentDecision } from "@/schemas/agent-decision";
-import { RolloutSchema, type Rollout } from "@/schemas/lookahead";
 
 export async function requestDecision(input: {
   context: ReasoningContext;
@@ -10,10 +9,8 @@ export async function requestDecision(input: {
     recoveryAttempts: number;
     userChangedGoal: boolean;
   };
-  imageDataUrl?: string;
-  allowLookahead?: boolean;
   signal?: AbortSignal;
-}): Promise<{ decision: AgentDecision; model: "fast" | "deep"; rollout: Rollout | null }> {
+}): Promise<{ decision: AgentDecision; model: "fast" | "deep" }> {
   const { signal, ...body } = input;
   const response = await fetch("/api/openai/reason", {
     method: "POST",
@@ -29,10 +26,9 @@ export async function requestDecision(input: {
         : "Reasoning failed";
     throw new Error(message);
   }
-  const record = payload as { decision: unknown; model: "fast" | "deep"; rollout?: unknown };
+  const record = payload as { decision: unknown; model: "fast" | "deep" };
   return {
     decision: AgentDecisionSchema.parse(record.decision),
     model: record.model,
-    rollout: record.rollout == null ? null : RolloutSchema.parse(record.rollout),
   };
 }

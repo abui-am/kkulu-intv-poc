@@ -1,5 +1,5 @@
-import { ConversationPanel } from "@/components/session/ConversationPanel";
+import { redirect } from "next/navigation";
 
 export default function SessionPage() {
-  return <ConversationPanel />;
+  redirect("/");
 }
