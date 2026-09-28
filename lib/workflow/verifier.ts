@@ -1,9 +1,6 @@
 import type { PerceptionStatus, WorkflowStepId } from "@/lib/world/types";
 import { canonicalizePage } from "@/lib/workflow/pages";
-import {
-  githubWorkflow,
-  previousExpectedScreen,
-} from "@/lib/workflow/github-workflow";
+import { stepById, type Workflow } from "@/lib/workflow/model";
 
 export type VerifyResult =
   | { outcome: "match"; stepId: WorkflowStepId }
@@ -11,12 +8,16 @@ export type VerifyResult =
   | { outcome: "ambiguous"; reason: string }
   | { outcome: "pending"; reason: string };
 
-export function verifyObservation(input: {
+export function verifyObservation(workflow: Workflow, input: {
   currentStep: WorkflowStepId;
   observedPage: string | null;
   perceptionStatus: PerceptionStatus;
 }): VerifyResult {
-  const expected = githubWorkflow[input.currentStep].expectedScreen;
+  const step = stepById(workflow, input.currentStep);
+  if (!step) {
+    return { outcome: "ambiguous", reason: "The current step is not in the workflow." };
+  }
+  const expected = step.expectedPage;
 
   if (input.perceptionStatus === "unknown" || input.perceptionStatus === "ambiguous") {
     return {
@@ -44,8 +45,7 @@ export function verifyObservation(input: {
     return { outcome: "match", stepId: input.currentStep };
   }
 
-  const previous = previousExpectedScreen(input.currentStep);
-  if (previous && observed === previous) {
+  if (observed === step.page) {
     return {
       outcome: "pending",
       reason: `Still on ${observed}. Waiting for ${expected}.`,

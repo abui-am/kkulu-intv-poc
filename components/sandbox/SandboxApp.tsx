@@ -27,7 +27,7 @@ export function SandboxApp({
   productRef: RefObject<HTMLDivElement | null>;
   onInteraction: (label: string, at: number) => void;
   onPage: (page: string, at: number) => void;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -49,12 +49,18 @@ export function SandboxApp({
   }, [pathname]);
 
   useEffect(() => {
-    const update = () => setCanBack(historyIndex(currentHistoryEntry()) > 0);
+    let timer = 0;
+    const update = () => {
+      const next = historyIndex(currentHistoryEntry()) > 0;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setCanBack(next), 0);
+    };
     update();
     const navigation = windowNavigation();
     navigation?.addEventListener("currententrychange", update);
     window.addEventListener("popstate", update);
     return () => {
+      window.clearTimeout(timer);
       navigation?.removeEventListener("currententrychange", update);
       window.removeEventListener("popstate", update);
     };

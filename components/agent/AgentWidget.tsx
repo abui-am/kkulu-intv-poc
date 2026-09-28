@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { InstructionSettings } from "@/components/agent/InstructionSettings";
 import { GuidePanel } from "@/components/session/GuidePanel";
 import type { MirroredSession } from "@/lib/session/channel";
+import type { Workflow } from "@/lib/workflow/model";
 import { cardCopy, cardPhase, type PrimaryAction } from "@/lib/session/closing";
 import type { AgentStatus } from "@/lib/world/types";
 
@@ -31,6 +33,7 @@ export function AgentWidget({
   onStop,
   onShare,
   onReset,
+  onInstructionsSaved,
   allowShare,
   debug,
 }: {
@@ -43,10 +46,12 @@ export function AgentWidget({
   onStop: () => void;
   onShare: () => void;
   onReset: () => void;
+  onInstructionsSaved: (workflow: Workflow) => void;
   allowShare: boolean;
   debug: ReactNode;
 }) {
   const [debugOpen, setDebugOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const phase = session
     ? cardPhase({
       running,
@@ -59,12 +64,17 @@ export function AgentWidget({
     phase,
     currentStep: session?.currentStep ?? "openSettings",
     instruction: session?.guide?.instruction ?? session?.instruction ?? null,
+    stepLabel: session?.stepLabel,
+    successLabel: session?.successLabel,
+    handoff: session?.handoff,
   });
   const activity = session?.status === "speaking" || session?.status === "thinking" ? session.status : "listening";
   const mode = phase === "live"
     ? (noticing ? "listening" : session?.status === "speaking" ? "speaking" : session?.status === "thinking" ? "thinking" : session?.hearing ? "hearing" : "listening")
     : "idle";
-  const label = phase === "done" || phase === "finished"
+  const label = phase === "escalated"
+    ? "Flagged"
+    : phase === "done" || phase === "finished"
     ? "Done"
     : phase === "paused"
       ? "Paused"
@@ -81,7 +91,7 @@ export function AgentWidget({
   }
 
   return (
-    <aside className="fixed right-5 bottom-5 z-50 w-80 rounded-2xl bg-slate-950 p-3 text-white shadow-2xl" aria-label="Agent">
+    <aside className={`fixed right-5 bottom-5 z-50 rounded-2xl bg-slate-950 p-3 text-white shadow-2xl ${manualOpen ? "w-[28rem]" : "w-80"}`} aria-label="Agent">
       <p className="text-[10px] font-medium tracking-[0.14em] text-teal-200">AGENT</p>
       <div className="mt-2 flex items-center gap-2" role="status" aria-live="polite">
         {noticing && phase === "live" ? (
@@ -127,15 +137,30 @@ export function AgentWidget({
             {phase === "paused" ? "Start over" : "Reset session"}
           </button>
         ) : <span />}
-        <button
-          type="button"
-          aria-expanded={debugOpen}
-          onClick={() => setDebugOpen((open) => !open)}
-          className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
-        >
-          {debugOpen ? "Hide debug" : "Debug"}
-        </button>
+        <span className="flex gap-3">
+          <button
+            type="button"
+            aria-expanded={manualOpen}
+            onClick={() => setManualOpen((open) => !open)}
+            className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+          >
+            {manualOpen ? "Hide instructions" : "Instructions"}
+          </button>
+          <button
+            type="button"
+            aria-expanded={debugOpen}
+            onClick={() => setDebugOpen((open) => !open)}
+            className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+          >
+            {debugOpen ? "Hide debug" : "Debug"}
+          </button>
+        </span>
       </div>
+      {manualOpen && (
+        <div className="mt-2 max-h-[50vh] overflow-auto rounded-xl bg-white p-3">
+          <InstructionSettings onSaved={onInstructionsSaved} />
+        </div>
+      )}
       {debugOpen && (
         <div className="mt-2 max-h-[50vh] space-y-3 overflow-auto rounded-xl bg-white p-3 text-slate-900">
           {debug}

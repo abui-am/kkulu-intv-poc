@@ -4,7 +4,7 @@ import type { SessionEvent } from "@/lib/events/types";
 import type { Rollout } from "@/schemas/lookahead";
 import type { SessionMetrics } from "@/lib/session/metrics";
 import { median } from "@/lib/session/metrics";
-import { workflowStepLabels, workflowStepOrder } from "@/lib/workflow/github-workflow";
+import { stepLabel, stepOrder } from "@/lib/workflow/model";
 import type { WorldModel } from "@/lib/world/types";
 
 function formatTime(at: number): string {
@@ -65,7 +65,7 @@ export function WorldModelPanel({ world, lastEvent }: { world: WorldModel; lastE
         </div>
       </dl>
       <ol className="space-y-1">
-        {workflowStepOrder.map((step) => {
+        {stepOrder(world.workflow.definition).map((step) => {
           const done = world.workflow.completedSteps.includes(step);
           const skipped = world.workflow.skippedSteps.includes(step);
           const current = world.workflow.currentStep === step && !done;
@@ -74,7 +74,7 @@ export function WorldModelPanel({ world, lastEvent }: { world: WorldModel; lastE
               key={step}
               className={`rounded-md px-2 py-1 ${current ? "bg-teal-50 font-medium text-teal-950" : "text-slate-700"}`}
             >
-              {done ? "✓" : skipped ? "↷" : "○"} {workflowStepLabels[step]}{skipped ? " · screen not seen" : ""}
+              {done ? "✓" : skipped ? "↷" : "○"} {stepLabel(world.workflow.definition, step)}{skipped ? " · screen not seen" : ""}
             </li>
           );
         })}
@@ -86,18 +86,23 @@ export function WorldModelPanel({ world, lastEvent }: { world: WorldModel; lastE
         <br />
         Reasoning from screen v{world.expectation.createdFromScreenVersion ?? world.screen.semanticVersion}
       </p>
+      {world.escalation && (
+        <p className="text-sm font-medium text-rose-800">
+          Escalated ({world.escalation.reason}): {world.escalation.summary}
+        </p>
+      )}
       {world.flags.conflictingEvidence && <p className="text-sm font-medium text-amber-800">Conflicting evidence</p>}
       {world.agent.speechInterrupted && <p className="text-sm font-medium text-amber-800">Speech interrupted</p>}
     </section>
   );
 }
 
-export function EventLogPanel({ events }: { events: SessionEvent[] }) {
-  const visible = events.filter((event) => event.type !== "FRAME_SAMPLED").slice(-12);
+export function EventLogPanel({ events, limit = 12, tall = false }: { events: SessionEvent[]; limit?: number; tall?: boolean }) {
+  const visible = events.filter((event) => event.type !== "FRAME_SAMPLED").slice(-limit);
   return (
     <section>
       <h2 className="text-sm font-semibold">Event log</h2>
-      <ol className="mt-2 max-h-64 space-y-1 overflow-auto font-mono text-xs leading-5 text-slate-700">
+      <ol className={`mt-2 space-y-1 overflow-auto font-mono text-xs leading-5 text-slate-700 ${tall ? "max-h-[70vh]" : "max-h-64"}`}>
         {visible.length === 0 && <li className="font-sans text-slate-600">No events yet</li>}
         {visible.map((event, index) => (
           <li key={`${event.type}-${event.at}-${index}`} className={event.type === "DECISION_REJECTED_STALE" ? "text-red-700" : ""}>

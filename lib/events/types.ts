@@ -3,6 +3,7 @@ import type { ScreenState } from "@/schemas/screen-state";
 import type { WorkflowStepId } from "@/lib/world/types";
 import type { ReflectionAssessment } from "@/lib/agent/reflection";
 import type { ScreenReview } from "@/lib/workflow/guide";
+import type { Workflow } from "@/lib/workflow/model";
 
 export type SessionEvent =
   | {
@@ -103,6 +104,7 @@ export type SessionEvent =
       type: "TRANSITION_REFLECTED";
       reflection: ReflectionAssessment;
       at: number;
-    };
+    }
+  | { type: "INSTRUCTION_MANUAL_UPDATED"; workflow: Workflow; at: number };
 
 export const EVENT_LOG_LIMIT = 100;

@@ -15,7 +15,8 @@ import { Stabilizer } from "@/lib/screen/stabilizer";
 import { ScreenStateSchema } from "@/schemas/screen-state";
 import { createMetrics, type SessionMetrics } from "@/lib/session/metrics";
 import { observeProgress } from "@/lib/workflow/progress";
-import { actionForPage, clickMatchesTarget, connectedEvidence, outsideWindowInstruction, targetVisible, type ScreenReview } from "@/lib/workflow/guide";
+import { actionForPage, clickMatchesTarget, connectedEvidence, outsideWindowInstruction, scriptedInstructions, targetVisible, type ScreenReview } from "@/lib/workflow/guide";
+import { awaitsConnection, type Workflow } from "@/lib/workflow/model";
 import { canonicalizePage } from "@/lib/workflow/pages";
 import { createInitialWorldModel } from "@/lib/world/initial-state";
 import type { WorldModel } from "@/lib/world/types";
@@ -280,9 +281,10 @@ export class SessionRuntime {
   }
 
   reset(): void {
+    const workflow = this.log.world.workflow.definition;
     this.stop();
     const sessionId = crypto.randomUUID();
-    this.log = { world: createInitialWorldModel(sessionId), events: [] };
+    this.log = { world: createInitialWorldModel(sessionId, workflow), events: [] };
     this.metrics = createMetrics();
     this.recentTurns = [];
     this.error = null;
@@ -358,6 +360,15 @@ export class SessionRuntime {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
+  refreshInstructionManual(workflow: Workflow): void {
+    this.playback.prefetch(scriptedInstructions(workflow));
+    const previous = this.log.world.agent.activeGuide?.instruction ?? null;
+    this.apply({ type: "INSTRUCTION_MANUAL_UPDATED", workflow, at: Date.now() });
+    if (this.ended || this.log.world.agent.status === "idle") return;
+    if (this.log.world.agent.activeGuide?.instruction !== previous) this.issueGuide(true);
+    else this.warmGuideSpeech();
+  }
+
   reportPage(page: string): void {
     this.onSandboxPage("host", page, Date.now());
   }
@@ -391,7 +402,7 @@ export class SessionRuntime {
     if (!safeLabel) return;
     const page = canonicalizePage(this.log.world.screen.page);
     const currentGuide = this.log.world.agent.activeGuide;
-    const guide = currentGuide?.kind === "action" ? currentGuide : actionForPage(page);
+    const guide = currentGuide?.kind === "action" ? currentGuide : actionForPage(this.log.world.workflow.definition, page);
     const instructionBefore = currentGuide?.instruction ?? null;
     this.apply({ type: "SANDBOX_INTERACTION", label: safeLabel, at });
     const target = guide?.kind === "action" ? guide.target : "";
@@ -485,7 +496,7 @@ export class SessionRuntime {
         delta: `Navigated to ${page}`,
       },
       semanticVersion: this.log.world.screen.semanticVersion + 1,
-      review: page === "GitHub Connected" ? "confirmed_connection" : "normal",
+      review: awaitsConnection(this.log.world.workflow.definition, page) ? "confirmed_connection" : "normal",
       at,
     });
     this.finishScreenUpdate(true, previousGuide !== this.log.world.agent.activeGuide?.instruction);
@@ -535,10 +546,11 @@ export class SessionRuntime {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageDataUrl: image,
+          goal: this.log.world.goal.description,
           currentStep: this.log.world.workflow.currentStep,
           expectedNextState: this.log.world.workflow.expectedNextState,
           previousScreenSummary: this.log.world.screen.summary,
-          expectedTarget: actionForPage(this.log.world.screen.page)?.target ?? null,
+          expectedTarget: actionForPage(this.log.world.workflow.definition, this.log.world.screen.page)?.target ?? null,
         }),
       });
       const payload: unknown = await response.json();
@@ -549,6 +561,7 @@ export class SessionRuntime {
       this.metrics.perceptionLatenciesMs.push(perceiveMs);
       this.logLatency("perceive", perceiveMs);
       const page = canonicalizePage(screen.page);
+      const confirming = awaitsConnection(this.log.world.workflow.definition, page);
       if (this.pageConfirm && page !== this.pageConfirm.page) {
         this.retryPageConfirm(page);
         return;
@@ -574,18 +587,19 @@ export class SessionRuntime {
       if (this.pendingInteraction && page && page !== this.pendingInteraction.originPage) {
         this.pendingInteraction = null;
       }
-      if (page !== "GitHub Connected") {
+      if (!confirming) {
         this.pendingConnectionImage = null;
         this.connectionEvidenceMisses = 0;
       }
       if (this.targetRetryPage !== page) this.targetRetryPage = null;
-      if (page === "GitHub Connected") {
+      const evidence = this.log.world.workflow.definition.steps.at(-1)?.confirm;
+      if (confirming && evidence) {
         if (this.log.world.goal.status === "completed") {
           review = "confirmed_connection";
         } else if (this.pendingConnectionImage && this.pendingConnectionImage !== imageId) {
-          review = connectedEvidence(screen.summary, screen.relevantElements) ? "confirmed_connection" : "missing_connection";
+          review = connectedEvidence(screen.summary, screen.relevantElements, evidence) ? "confirmed_connection" : "missing_connection";
           this.pendingConnectionImage = null;
-        } else if (!connectedEvidence(screen.summary, screen.relevantElements)) {
+        } else if (!connectedEvidence(screen.summary, screen.relevantElements, evidence)) {
           this.connectionEvidenceMisses += 1;
           review = this.connectionEvidenceMisses >= 2 ? "missing_connection" : "checking_connection";
         } else {
@@ -606,7 +620,7 @@ export class SessionRuntime {
               : "stalled_transition"
             : "checking_transition";
         }
-      } else if (page && actionForPage(page) && !targetVisible(page, screen.relevantElements)) {
+      } else if (page && actionForPage(this.log.world.workflow.definition, page) && !targetVisible(this.log.world.workflow.definition, page, screen.relevantElements)) {
         if (this.targetRetryPage === page) {
           review = "missing_target";
         } else {
@@ -616,7 +630,7 @@ export class SessionRuntime {
       } else {
         this.targetRetryPage = null;
       }
-      if (this.sandboxPage && page === this.sandboxPage && page !== "GitHub Connected") review = "normal";
+      if (this.sandboxPage && page === this.sandboxPage && !confirming) review = "normal";
       if (canonicalizePage(previousPage) !== page) this.forcedChecks = 0;
       this.apply({
         type: "SCREEN_STATE_UPDATED",
@@ -739,7 +753,7 @@ export class SessionRuntime {
 
   private finishScreenUpdate(semanticChanged: boolean, guideChanged: boolean): void {
     const world = this.log.world;
-    const result = observeProgress({
+    const result = observeProgress(world.workflow.definition, {
       currentStep: world.workflow.currentStep,
       completedSteps: world.workflow.completedSteps,
       skippedSteps: world.workflow.skippedSteps,
@@ -756,7 +770,7 @@ export class SessionRuntime {
         at: Date.now(),
       });
     } else if (result.outcome === "off_path" && semanticChanged) {
-      const expected = world.workflow.expectedNextState ?? "GitHub setup";
+      const expected = world.workflow.expectedNextState ?? this.log.world.goal.description;
       const observed = world.screen.page ?? "unknown";
       this.discrepancy = { expected, observed };
       this.apply({
@@ -807,7 +821,7 @@ export class SessionRuntime {
     if (!guide || guide.kind === "wait") return;
     const lines = [guide.instruction];
     if (guide.kind === "action") {
-      const next = actionForPage(guide.expectedPage);
+      const next = actionForPage(this.log.world.workflow.definition, guide.expectedPage);
       if (next && next.instruction !== guide.instruction) lines.push(next.instruction);
     }
     this.playback.prefetch(lines);
@@ -992,6 +1006,10 @@ export class SessionRuntime {
           if (voiceToken !== this.voiceToken) return;
           this.apply({ type: "USER_TRANSCRIPT_FINAL", text, itemId, at: Date.now() });
           this.recentTurns = [...this.recentTurns, `User: ${text}`].slice(-4);
+          if (this.log.world.escalation) {
+            this.issueGuide();
+            return;
+          }
           void this.reason("speech");
         },
         onError: (message) => {
@@ -1135,6 +1153,8 @@ function traceDetail(event: SessionEvent): string {
       return `expected ${event.expected}, observed ${event.observed}`;
     case "TRANSITION_REFLECTED":
       return `${event.reflection.status}: expected ${event.reflection.expectedPage}, observed ${event.reflection.observedPage ?? "unknown"}`;
+    case "INSTRUCTION_MANUAL_UPDATED":
+      return "instruction manual";
     case "AGENT_SPEECH_STARTED":
     case "AGENT_INTERRUPTED":
       return event.decisionId ?? "";

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { guidedDecision } from "@/lib/agent/guide-decision";
+import { connectGithub } from "@/lib/workflow/connect-github";
 import { guideForObservation, scriptedInstructions, stalledSharedInstruction } from "@/lib/workflow/guide";
+import { compileWorkflow } from "@/lib/workflow/manual";
 import { observeProgress } from "@/lib/workflow/progress";
 import { createInitialWorldModel } from "@/lib/world/initial-state";
 import { reduceWorld } from "@/lib/world/reducer";
@@ -27,8 +29,10 @@ function observe(world: WorldModel, page: string): WorldModel {
       ? "confirmed_connection" : "normal",
     at: world.screen.semanticVersion + 1,
   });
-  const progress = observeProgress({
-    ...seen.workflow,
+  const progress = observeProgress(seen.workflow.definition, {
+    currentStep: seen.workflow.currentStep,
+    completedSteps: seen.workflow.completedSteps,
+    skippedSteps: seen.workflow.skippedSteps,
     observedPage: seen.screen.page,
     perceptionStatus: seen.screen.perceptionStatus,
     review: seen.screen.review,
@@ -43,6 +47,38 @@ function observe(world: WorldModel, page: string): WorldModel {
 }
 
 describe("GitHub guide and observed progress", () => {
+  it("follows a saved manual instead of the built-in GitHub path", () => {
+    const workflow = compileWorkflow("Open API keys from the dashboard.", [
+      {
+        page: "Dashboard",
+        instruction: "From the manual: open API Keys.",
+        target: "Create an API token",
+        expectedPage: "API Keys",
+      },
+    ]);
+    expect(workflow).not.toBeNull();
+    if (!workflow) return;
+    expect(guideForObservation(workflow, {
+      page: "Dashboard",
+      perceptionStatus: "clear",
+      screenAvailable: true,
+    })).toMatchObject({
+      kind: "action",
+      target: "Create an API token",
+      expectedPage: "API Keys",
+      instruction: "From the manual: open API Keys.",
+    });
+    const started = createInitialWorldModel("custom", workflow);
+    expect(started.goal.description).toBe("Open API keys from the dashboard.");
+    expect(started.workflow).toMatchObject({ currentStep: "step-1", expectedNextState: "API Keys" });
+    expect(observe(started, "API Keys").goal.status).toBe("completed");
+    expect(guideForObservation(workflow, {
+      page: "Settings",
+      perceptionStatus: "clear",
+      screenAvailable: true,
+    }).instruction).toContain("isn't in the workflow");
+  });
+
   it("guides through all observed pages to completion", () => {
     let world = observe(createInitialWorldModel("session"), "Dashboard");
     expect(world.agent.activeGuide).toMatchObject({ target: "Open Settings", expectedPage: "Settings" });
@@ -101,7 +137,7 @@ describe("GitHub guide and observed progress", () => {
   });
 
   it("asks the user to wait when the shared screen has not caught up", () => {
-    const guide = guideForObservation({
+    const guide = guideForObservation(connectGithub, {
       page: "Settings",
       perceptionStatus: "clear",
       screenAvailable: true,
@@ -111,11 +147,11 @@ describe("GitHub guide and observed progress", () => {
   });
 
   it("keeps the back-navigation lines with the other scripted speech", () => {
-    const lines = scriptedInstructions();
+    const lines = scriptedInstructions(connectGithub);
     const stalled = stalledSharedInstruction("Settings", "Integrations");
     expect(lines).toContain("The shared screen is a beat behind. Stay on this page for a second.");
     expect(lines).toContain(stalled);
-    expect(guideForObservation({
+    expect(guideForObservation(connectGithub, {
       page: "Settings",
       perceptionStatus: "clear",
       screenAvailable: true,
@@ -178,7 +214,7 @@ describe("GitHub guide and observed progress", () => {
   });
 
   it("prescribes recovery for API Keys and overrides an invented navigation target", () => {
-    const guide = guideForObservation({ page: "API Keys", perceptionStatus: "clear", screenAvailable: true });
+    const guide = guideForObservation(connectGithub, { page: "API Keys", perceptionStatus: "clear", screenAvailable: true });
     expect(guide).toMatchObject({ kind: "action", target: "Settings" });
     const decision = guidedDecision({
       id: "model",
@@ -195,7 +231,7 @@ describe("GitHub guide and observed progress", () => {
   });
 
   it("prioritizes restoring the screen share over a pending side question", () => {
-    const guide = guideForObservation({ page: null, perceptionStatus: "unknown", screenAvailable: false });
+    const guide = guideForObservation(connectGithub, { page: null, perceptionStatus: "unknown", screenAvailable: false });
     const decision = guidedDecision({
       id: "model",
       type: "answer",

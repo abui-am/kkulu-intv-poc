@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AgentWidget } from "@/components/agent/AgentWidget";
+import { InstructionSettings } from "@/components/agent/InstructionSettings";
 import type { MirroredSession } from "@/lib/session/channel";
 
 function session(overrides: Partial<MirroredSession> = {}): MirroredSession {
@@ -20,6 +21,9 @@ function session(overrides: Partial<MirroredSession> = {}): MirroredSession {
       expectedPage: "GitHub Integration",
     },
     currentStep: "selectGithub",
+    stepLabel: "Select GitHub",
+    successLabel: "GitHub is connected",
+    handoff: null,
     goalStatus: "active",
     verifiedCount: 2,
     skippedCount: 0,
@@ -39,6 +43,7 @@ function card(props: { session: MirroredSession | null; running: boolean }) {
     onStop: () => undefined,
     onShare: () => undefined,
     onReset: () => undefined,
+    onInstructionsSaved: () => undefined,
     allowShare: true,
     debug: null,
   }));
@@ -92,5 +97,13 @@ describe("agent card", () => {
     expect(html).toContain("all set. GitHub is connected.");
     expect(html).not.toContain(">Listening<");
     expect(html).not.toContain("Current action");
+  });
+
+  it("offers the instruction manual on the agent card", () => {
+    const html = card({ session: null, running: false });
+    expect(html).toContain("Instructions");
+    const manual = renderToStaticMarkup(createElement(InstructionSettings, { onSaved: () => undefined }));
+    expect(manual).toContain("Hit Open Settings and we");
+    expect(manual).toContain("Save manual");
   });
 });

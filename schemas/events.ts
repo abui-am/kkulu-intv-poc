@@ -2,13 +2,7 @@ import { z } from "zod";
 import { AgentDecisionSchema } from "@/schemas/agent-decision";
 import { ScreenStateSchema } from "@/schemas/screen-state";
 
-const workflowStepId = z.enum([
-  "openSettings",
-  "openIntegrations",
-  "selectGithub",
-  "authorizeGithub",
-  "verifyConnection",
-]);
+const workflowStepId = z.string().min(1);
 
 export const SessionEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("SESSION_STARTED"), at: z.number() }),

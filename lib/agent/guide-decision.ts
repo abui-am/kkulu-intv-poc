@@ -8,10 +8,22 @@ function guideType(guide: Guide): AgentDecision["type"] {
     case "clarify": return "clarify";
     case "reconnect": return "recover";
     case "complete": return "complete";
+    case "escalate": return "escalate";
   }
 }
 
 export function guidedDecision(decision: AgentDecision, guide: Guide | null, activeQuestion: string | null): AgentDecision {
+  if (guide?.kind === "escalate") {
+    return {
+      ...decision,
+      type: "escalate",
+      target: "",
+      expectedScreenState: "",
+      response: guide.instruction,
+      reasoningClass: "deviation",
+      requiresDeepReasoning: false,
+    };
+  }
   if (!guide) return decision;
   if (activeQuestion && guide.kind !== "reconnect") {
     const answer = decision.response.trim().replace(/[.!?]+$/, "");

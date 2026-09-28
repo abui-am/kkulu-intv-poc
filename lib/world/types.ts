@@ -1,13 +1,9 @@
 import type { AgentDecision } from "@/schemas/agent-decision";
 import type { ReflectionAssessment } from "@/lib/agent/reflection";
 import type { Guide, ScreenReview } from "@/lib/workflow/guide";
+import type { Escalation, Workflow } from "@/lib/workflow/model";
 
-export type WorkflowStepId =
-  | "openSettings"
-  | "openIntegrations"
-  | "selectGithub"
-  | "authorizeGithub"
-  | "verifyConnection";
+export type WorkflowStepId = string;
 
 export type ScreenElement = {
   label: string;
@@ -26,18 +22,21 @@ export type WorldModel = {
   sessionId: string;
 
   goal: {
-    id: "connect_github";
+    id: string;
     description: string;
     status: "active" | "completed" | "blocked";
   };
 
   workflow: {
+    definition: Workflow;
     currentStep: WorkflowStepId;
     completedSteps: WorkflowStepId[];
     skippedSteps: WorkflowStepId[];
     expectedNextState?: ScreenSemanticState;
     recoveryAttempts: number;
   };
+
+  escalation: Escalation | null;
 
   screen: {
     frameVersion: number;

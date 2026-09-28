@@ -1,18 +1,14 @@
 import { canonicalizePage } from "@/lib/workflow/pages";
-import { githubWorkflow, workflowStepOrder } from "@/lib/workflow/github-workflow";
+import { awaitsConnection, stepOrder, type Workflow } from "@/lib/workflow/model";
 import type { PerceptionStatus, WorkflowStepId } from "@/lib/world/types";
 import type { ScreenReview } from "@/lib/workflow/guide";
-
-const STEP_BY_PAGE = Object.fromEntries(
-  workflowStepOrder.map((step) => [githubWorkflow[step].expectedScreen, step]),
-) as Record<string, WorkflowStepId>;
 
 export type ProgressObservation =
   | { outcome: "advance"; observedStep: WorkflowStepId; skippedSteps: WorkflowStepId[] }
   | { outcome: "revisit"; observedStep: WorkflowStepId }
   | { outcome: "backtrack" | "pending" | "ambiguous" | "off_path" };
 
-export function observeProgress(input: {
+export function observeProgress(workflow: Workflow, input: {
   currentStep: WorkflowStepId;
   completedSteps: WorkflowStepId[];
   skippedSteps: WorkflowStepId[];
@@ -22,16 +18,19 @@ export function observeProgress(input: {
 }): ProgressObservation {
   if (input.perceptionStatus !== "clear") return { outcome: "ambiguous" };
   const page = canonicalizePage(input.observedPage);
-  if (page === "GitHub Connected" && input.review !== "confirmed_connection") return { outcome: "pending" };
+  const order = stepOrder(workflow);
+  if (awaitsConnection(workflow, page) && input.review !== "confirmed_connection") return { outcome: "pending" };
   if (page === "Loading") return { outcome: "pending" };
-  if (page === "Dashboard") {
-    return { outcome: input.currentStep === "openSettings" ? "pending" : "backtrack" };
+  const start = workflow.steps[0];
+  const expectedByPage = new Map(workflow.steps.map((step) => [step.expectedPage, step.id]));
+  if (start && page === start.page && !expectedByPage.has(page)) {
+    return { outcome: input.currentStep === start.id ? "pending" : "backtrack" };
   }
-  const observedStep = page ? STEP_BY_PAGE[page] : undefined;
+  const observedStep = page ? expectedByPage.get(page) : undefined;
   if (!observedStep) return { outcome: "off_path" };
   if (input.completedSteps.includes(observedStep)) return { outcome: "backtrack" };
-  const currentIndex = workflowStepOrder.indexOf(input.currentStep);
-  const observedIndex = workflowStepOrder.indexOf(observedStep);
+  const currentIndex = order.indexOf(input.currentStep);
+  const observedIndex = order.indexOf(observedStep);
   if (observedIndex < currentIndex) {
     return input.skippedSteps.includes(observedStep)
       ? { outcome: "revisit", observedStep }
@@ -40,6 +39,6 @@ export function observeProgress(input: {
   return {
     outcome: "advance",
     observedStep,
-    skippedSteps: workflowStepOrder.slice(currentIndex, observedIndex),
+    skippedSteps: order.slice(currentIndex, observedIndex),
   };
 }

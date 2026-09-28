@@ -1,20 +1,25 @@
+import { connectGithub } from "@/lib/workflow/connect-github";
+import type { Workflow } from "@/lib/workflow/model";
 import type { WorldModel } from "@/lib/world/types";
 
-export function createInitialWorldModel(sessionId: string): WorldModel {
+export function createInitialWorldModel(sessionId: string, workflow: Workflow = connectGithub): WorldModel {
+  const first = workflow.steps[0];
   return {
     sessionId,
     goal: {
-      id: "connect_github",
-      description: "Connect GitHub to the SaaS application.",
+      id: workflow.id,
+      description: workflow.goal,
       status: "active",
     },
     workflow: {
-      currentStep: "openSettings",
+      definition: workflow,
+      currentStep: first?.id ?? "openSettings",
       completedSteps: [],
       skippedSteps: [],
-      expectedNextState: "Settings",
+      expectedNextState: first?.expectedPage ?? "Settings",
       recoveryAttempts: 0,
     },
+    escalation: null,
     screen: {
       frameVersion: 0,
       semanticVersion: 0,
@@ -39,7 +44,7 @@ export function createInitialWorldModel(sessionId: string): WorldModel {
       speechInterrupted: false,
     },
     expectation: {
-      expectedScreenState: "Settings",
+      expectedScreenState: first?.expectedPage ?? "Settings",
       createdFromScreenVersion: null,
     },
     reflection: null,

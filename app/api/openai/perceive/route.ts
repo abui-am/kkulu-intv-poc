@@ -7,6 +7,7 @@ import { ScreenStateSchema, screenStateJsonSchema } from "@/schemas/screen-state
 
 const requestSchema = z.object({
   imageDataUrl: z.string().min(1).max(6_000_000),
+  goal: z.string().optional(),
   currentStep: z.string(),
   expectedNextState: z.string().optional(),
   previousScreenSummary: z.string().nullable(),
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   try {
     const body = requestSchema.parse(await request.json());
     const prompt = buildScreenPerceptionPrompt({
+      goal: body.goal,
       currentStep: body.currentStep,
       expectedNextState: body.expectedNextState,
       previousScreenSummary: body.previousScreenSummary,

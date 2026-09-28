@@ -1,4 +1,5 @@
 import type { KuluCapture, KuluHost, KuluSurfaceState } from "@/lib/embed/host";
+import type { Workflow } from "@/lib/workflow/model";
 import { acquireController } from "@/lib/session/controller-lock";
 import { createMetrics } from "@/lib/session/metrics";
 import { SessionRuntime, type SessionSnapshot } from "@/lib/session/runtime";
@@ -170,6 +171,10 @@ export class KuluController {
       };
       this.publishView();
     }
+  }
+
+  refreshInstructionManual(workflow: Workflow): void {
+    this.runtime.refreshInstructionManual(workflow);
   }
 
   exportTrace(includeScreenshots: boolean): void {

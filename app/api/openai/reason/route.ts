@@ -48,7 +48,7 @@ const contextSchema = z.object({
     z.object({
       kind: z.literal("action"),
       page: z.enum(["Dashboard", "Settings", "Integrations", "GitHub Integration", "GitHub Authorization", "GitHub Connected", "API Keys", "Loading"]),
-      stepId: z.enum(["openSettings", "openIntegrations", "selectGithub", "authorizeGithub", "verifyConnection"]).nullable(),
+      stepId: z.string().nullable(),
       target: z.string(),
       instruction: z.string(),
       expectedPage: z.string(),

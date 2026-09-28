@@ -46,11 +46,10 @@ describe("sandbox page shell", () => {
         productRef: createRef<HTMLDivElement>(),
         onInteraction: () => undefined,
         onPage: () => undefined,
-        children: createElement(Dashboard, {
+      }, createElement(Dashboard, {
           onOpenSettings: () => undefined,
           onOpenApiKeys: () => undefined,
-        }),
-      }),
+        })),
     );
     expect(html).toContain("Back");
     expect(html).toContain("Dashboard");

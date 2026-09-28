@@ -1,13 +1,17 @@
 import type { SessionEvent } from "@/lib/events/types";
 import { derivePerceptionStatus } from "@/lib/screen/perception";
-import { guideForObservation, isSamePageDetour, outsideWindowInstruction, samePageDetour, type Guide } from "@/lib/workflow/guide";
-import { canonicalizePage } from "@/lib/workflow/pages";
 import {
-  githubWorkflow,
-  isTerminalStep,
-  nextStep,
-  workflowStepOrder,
-} from "@/lib/workflow/github-workflow";
+  blockerFor,
+  escalationForAsk,
+  escalationForBlocker,
+  escalationForStuck,
+  escalationForUnconfirmed,
+  holdsEscalation,
+  askedForPerson,
+} from "@/lib/workflow/escalate";
+import { guideForObservation, isSamePageDetour, outsideWindowInstruction, samePageDetour, type Guide } from "@/lib/workflow/guide";
+import { expectedPage, isTerminal, nextStepId, stepOrder, type Escalation } from "@/lib/workflow/model";
+import { canonicalizePage } from "@/lib/workflow/pages";
 import type { WorldModel } from "@/lib/world/types";
 
 function looksLikeQuestion(text: string): boolean {
@@ -16,9 +20,31 @@ function looksLikeQuestion(text: string): boolean {
 
 function keptGuide(world: WorldModel, nextPage: string | null, next: Guide): Guide {
   const current = world.agent.activeGuide;
-  if (!isSamePageDetour(current)) return next;
+  if (!isSamePageDetour(world.workflow.definition, current)) return next;
   if (canonicalizePage(nextPage) !== canonicalizePage(world.screen.page)) return next;
   return current;
+}
+
+function escalateGuide(escalation: Escalation): Guide {
+  return { kind: "escalate", instruction: escalation.instruction };
+}
+
+function withEscalation(world: WorldModel, escalation: Escalation): WorldModel {
+  return {
+    ...world,
+    escalation,
+    goal: { ...world.goal, status: "blocked" },
+    agent: { ...world.agent, activeGuide: escalateGuide(escalation) },
+  };
+}
+
+function guideForScreen(world: WorldModel, nextPage: string | null, proposed: Guide): { guide: Guide; escalation: Escalation | null; status: WorldModel["goal"]["status"] } {
+  const escalation = world.escalation;
+  if (!escalation) return { guide: keptGuide(world, nextPage, proposed), escalation: null, status: world.goal.status };
+  if (!holdsEscalation(escalation, world.workflow.definition, world.workflow.currentStep, nextPage)) {
+    return { guide: proposed, escalation: null, status: world.goal.status === "blocked" ? "active" : world.goal.status };
+  }
+  return { guide: escalateGuide(escalation), escalation, status: "blocked" };
 }
 
 export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel {
@@ -30,7 +56,7 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           ...world.agent,
           status: "listening",
           speechInterrupted: false,
-          activeGuide: world.agent.activeGuide?.kind === "action" || world.agent.activeGuide?.kind === "complete"
+          activeGuide: world.agent.activeGuide?.kind === "action" || world.agent.activeGuide?.kind === "complete" || world.agent.activeGuide?.kind === "escalate"
             ? world.agent.activeGuide
             : { kind: "wait", instruction: "Give me a second. I'm looking at the page." },
         },
@@ -50,8 +76,8 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         ...world,
         conversation: { ...world.conversation, partialTranscript: event.text },
       };
-    case "USER_TRANSCRIPT_FINAL":
-      return {
+    case "USER_TRANSCRIPT_FINAL": {
+      const next = {
         ...world,
         conversation: {
           partialTranscript: "",
@@ -59,6 +85,9 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           activeQuestion: looksLikeQuestion(event.text) ? event.text : null,
         },
       };
+      if (!askedForPerson(event.text) || world.escalation) return next;
+      return withEscalation(next, escalationForAsk(world.workflow.definition, world.screen.page, world.workflow.currentStep, event.text));
+    }
     case "FRAME_SAMPLED":
       return {
         ...world,
@@ -69,8 +98,21 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
       return world;
     case "SCREEN_STATE_UPDATED": {
       const perceptionStatus = derivePerceptionStatus(event.screen);
+      const review = event.review ?? "normal";
+      let base = world;
+      if (review === "missing_connection" && !world.escalation) {
+        base = withEscalation(world, escalationForUnconfirmed(world.workflow.definition, event.screen.page, world.workflow.currentStep));
+      }
+      const shown = guideForScreen(base, event.screen.page, guideForObservation(base.workflow.definition, {
+        page: event.screen.page,
+        perceptionStatus,
+        screenAvailable: true,
+        review,
+      }));
       return {
-        ...world,
+        ...base,
+        escalation: shown.escalation,
+        goal: { ...base.goal, status: shown.status },
         screen: {
           ...world.screen,
           semanticVersion: event.semanticVersion,
@@ -79,17 +121,12 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           summary: event.screen.summary,
           relevantElements: event.screen.relevantElements,
           perceptionStatus,
-          review: event.review ?? "normal",
+          review,
           source: "vision",
         },
         agent: {
           ...world.agent,
-          activeGuide: keptGuide(world, event.screen.page, guideForObservation({
-            page: event.screen.page,
-            perceptionStatus,
-            screenAvailable: true,
-            review: event.review,
-          })),
+          activeGuide: shown.guide,
         },
         flags: {
           ...world.flags,
@@ -106,7 +143,11 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         flags: { ...world.flags, needsDeepReasoning: true },
       };
     case "SANDBOX_INTERACTION": {
-      const instruction = samePageDetour(world.screen.page, event.label);
+      const blocker = blockerFor(world.workflow.definition, world.screen.page, event.label);
+      if (blocker) {
+        return withEscalation(world, escalationForBlocker(world.workflow.definition, world.screen.page, world.workflow.currentStep, blocker));
+      }
+      const instruction = samePageDetour(world.workflow.definition, world.screen.page, event.label);
       if (!instruction) return world;
       return {
         ...world,
@@ -130,8 +171,11 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
     case "SANDBOX_PAGE_REPORTED": {
       const page = canonicalizePage(event.page);
       if (page !== "Loading") return world;
+      const shown = guideForScreen(world, page, guideForObservation(world.workflow.definition, { page, perceptionStatus: "clear", screenAvailable: true }));
       return {
         ...world,
+        escalation: shown.escalation,
+        goal: { ...world.goal, status: shown.status },
         screen: {
           ...world.screen,
           page,
@@ -143,13 +187,16 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         flags: { ...world.flags, screenAvailable: true },
         agent: {
           ...world.agent,
-          activeGuide: guideForObservation({ page, perceptionStatus: "clear", screenAvailable: true }),
+          activeGuide: shown.guide,
         },
       };
     }
-    case "SCREEN_UNAVAILABLE":
+    case "SCREEN_UNAVAILABLE": {
+      const shown = guideForScreen(world, null, guideForObservation(world.workflow.definition, { page: null, perceptionStatus: "unknown", screenAvailable: false }));
       return {
         ...world,
+        escalation: shown.escalation,
+        goal: { ...world.goal, status: shown.status },
         conversation: { ...world.conversation, activeQuestion: null, partialTranscript: "" },
         screen: {
           ...world.screen,
@@ -163,9 +210,10 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         flags: { ...world.flags, screenAvailable: false },
         agent: {
           ...world.agent,
-          activeGuide: guideForObservation({ page: null, perceptionStatus: "unknown", screenAvailable: false }),
+          activeGuide: shown.guide,
         },
       };
+    }
     case "REASONING_STARTED":
       return {
         ...world,
@@ -199,6 +247,46 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
       return world;
     case "TRANSITION_REFLECTED":
       return { ...world, reflection: event.reflection };
+    case "INSTRUCTION_MANUAL_UPDATED": {
+      const steps = event.workflow.steps;
+      const page = canonicalizePage(world.screen.page);
+      const arrived = steps.find((step) => step.expectedPage === page);
+      const standing = steps.find((step) => step.page === page);
+      const arrivedIndex = arrived ? steps.indexOf(arrived) : -1;
+      const upcoming = arrivedIndex >= 0 ? steps[arrivedIndex + 1] : undefined;
+      const current = upcoming ?? arrived ?? standing ?? steps[0];
+      const done = Boolean(arrived && !upcoming);
+      return {
+        ...world,
+        goal: {
+          ...world.goal,
+          id: event.workflow.id,
+          description: event.workflow.goal,
+          status: done ? "completed" : "active",
+        },
+        workflow: {
+          definition: event.workflow,
+          currentStep: current?.id ?? world.workflow.currentStep,
+          completedSteps: [],
+          skippedSteps: [],
+          expectedNextState: current?.expectedPage,
+          recoveryAttempts: 0,
+        },
+        expectation: {
+          expectedScreenState: current?.expectedPage ?? null,
+          createdFromScreenVersion: world.screen.semanticVersion,
+        },
+        agent: {
+          ...world.agent,
+          activeGuide: guideForObservation(event.workflow, {
+            page: world.screen.page,
+            perceptionStatus: world.screen.perceptionStatus,
+            screenAvailable: world.flags.screenAvailable,
+            review: world.screen.review,
+          }),
+        },
+      };
+    }
     case "AGENT_SPEECH_STARTED":
       return {
         ...world,
@@ -210,11 +298,12 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         agent: { ...world.agent, status: "listening", speechInterrupted: true },
       };
     case "WORKFLOW_STEP_VERIFIED": {
+      const workflow = world.workflow.definition;
       const completed = world.workflow.completedSteps.includes(event.stepId)
         ? world.workflow.completedSteps
         : [...world.workflow.completedSteps, event.stepId];
-      const terminal = isTerminalStep(event.stepId);
-      const upcoming = nextStep(event.stepId);
+      const terminal = isTerminal(workflow, event.stepId);
+      const upcoming = nextStepId(workflow, event.stepId);
       return {
         ...world,
         goal: {
@@ -222,53 +311,58 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           status: terminal ? "completed" : world.goal.status,
         },
         workflow: {
+          ...world.workflow,
           currentStep: upcoming ?? event.stepId,
           completedSteps: completed,
           skippedSteps: world.workflow.skippedSteps.filter((step) => step !== event.stepId),
           expectedNextState: upcoming
-            ? githubWorkflow[upcoming].expectedScreen
-            : githubWorkflow[event.stepId].expectedScreen,
+            ? expectedPage(workflow, upcoming) ?? event.stepId
+            : expectedPage(workflow, event.stepId) ?? event.stepId,
           recoveryAttempts: 0,
         },
         expectation: {
           expectedScreenState: upcoming
-            ? githubWorkflow[upcoming].expectedScreen
-            : githubWorkflow[event.stepId].expectedScreen,
+            ? expectedPage(workflow, upcoming)
+            : expectedPage(workflow, event.stepId),
           createdFromScreenVersion: world.screen.semanticVersion,
         },
         flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
       };
     }
     case "WORKFLOW_PROGRESS_RECONCILED": {
-      const completedSteps = workflowStepOrder.filter(
+      const workflow = world.workflow.definition;
+      const order = stepOrder(workflow);
+      const completedSteps = order.filter(
         (step) => step === event.observedStep || world.workflow.completedSteps.includes(step),
       );
-      const skippedSteps = workflowStepOrder.filter(
+      const skippedSteps = order.filter(
         (step) => !completedSteps.includes(step) &&
           (world.workflow.skippedSteps.includes(step) || event.skippedSteps.includes(step)),
       );
-      const currentIndex = workflowStepOrder.indexOf(world.workflow.currentStep);
-      const observedIndex = workflowStepOrder.indexOf(event.observedStep);
-      const upcoming = nextStep(event.observedStep);
-      const terminal = isTerminalStep(event.observedStep);
+      const currentIndex = order.indexOf(world.workflow.currentStep);
+      const observedIndex = order.indexOf(event.observedStep);
+      const upcoming = nextStepId(workflow, event.observedStep);
+      const terminal = isTerminal(workflow, event.observedStep);
       const currentStep = terminal
         ? event.observedStep
         : observedIndex >= currentIndex && upcoming
           ? upcoming
           : world.workflow.currentStep;
+      const released = world.escalation?.reason !== "asked";
       return {
         ...world,
-        goal: { ...world.goal, status: terminal ? "completed" : world.goal.status },
+        escalation: released ? null : world.escalation,
+        goal: { ...world.goal, status: terminal ? "completed" : released && world.goal.status === "blocked" ? "active" : world.goal.status },
         workflow: {
           ...world.workflow,
           currentStep,
           completedSteps,
           skippedSteps,
-          expectedNextState: githubWorkflow[currentStep].expectedScreen,
+          expectedNextState: expectedPage(workflow, currentStep) ?? currentStep,
           recoveryAttempts: 0,
         },
         expectation: {
-          expectedScreenState: githubWorkflow[currentStep].expectedScreen,
+          expectedScreenState: expectedPage(workflow, currentStep),
           createdFromScreenVersion: world.screen.semanticVersion,
         },
         flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
@@ -280,15 +374,22 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
         workflow: { ...world.workflow, recoveryAttempts: 0 },
         flags: { ...world.flags, conflictingEvidence: false, needsDeepReasoning: false },
       };
-    case "WORKFLOW_DEVIATION":
-      return {
+    case "WORKFLOW_DEVIATION": {
+      const recoveryAttempts = world.workflow.recoveryAttempts + 1;
+      const next = {
         ...world,
-        workflow: {
-          ...world.workflow,
-          recoveryAttempts: world.workflow.recoveryAttempts + 1,
-        },
+        workflow: { ...world.workflow, recoveryAttempts },
         flags: { ...world.flags, conflictingEvidence: true, needsDeepReasoning: true },
       };
+      if (world.escalation || recoveryAttempts < world.workflow.definition.handoff.stuckAfter) return next;
+      return withEscalation(next, escalationForStuck(
+        world.workflow.definition,
+        world.screen.page,
+        world.workflow.currentStep,
+        event.expected,
+        event.observed,
+      ));
+    }
     default:
       return world;
   }

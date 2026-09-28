@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { connectGithub } from "@/lib/workflow/connect-github";
 import { verifyObservation } from "@/lib/workflow/verifier";
 import { reduceWorld } from "@/lib/world/reducer";
 import { createInitialWorldModel } from "@/lib/world/initial-state";
 
 describe("workflow verifier", () => {
   it("completes the step when Settings is expected and observed", () => {
-    const result = verifyObservation({
+    const result = verifyObservation(connectGithub, {
       currentStep: "openSettings",
       observedPage: "Settings",
       perceptionStatus: "clear",
@@ -26,7 +27,7 @@ describe("workflow verifier", () => {
     const world = createInitialWorldModel("s1");
     world.workflow.currentStep = "openIntegrations";
     world.workflow.expectedNextState = "Integrations";
-    const result = verifyObservation({
+    const result = verifyObservation(connectGithub, {
       currentStep: world.workflow.currentStep,
       observedPage: "API Keys",
       perceptionStatus: "clear",
@@ -49,14 +50,14 @@ describe("workflow verifier", () => {
 
   it("does not advance on a loading screen or an ambiguous observation", () => {
     expect(
-      verifyObservation({
+      verifyObservation(connectGithub, {
         currentStep: "openIntegrations",
         observedPage: "Loading",
         perceptionStatus: "clear",
       }).outcome,
     ).toBe("pending");
     expect(
-      verifyObservation({
+      verifyObservation(connectGithub, {
         currentStep: "openIntegrations",
         observedPage: "Status updating",
         perceptionStatus: "ambiguous",
