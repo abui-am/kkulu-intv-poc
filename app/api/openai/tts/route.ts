@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { openaiSpeech } from "@/lib/openai/client";
+import { openaiSpeechStream } from "@/lib/openai/client";
 import { MODELS } from "@/lib/openai/models";
 
 const requestSchema = z.object({
@@ -10,17 +10,19 @@ const requestSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = requestSchema.parse(await request.json());
-    const audio = await openaiSpeech({
+    const audio = await openaiSpeechStream({
       model: MODELS.tts,
       voice: "coral",
       input: body.text,
-      instructions: "Speak in English only, calmly and briefly, like a patient onboarding guide.",
-      response_format: "mp3",
+      speed: 1,
+      response_format: "pcm",
+      stream_format: "audio",
     });
-    return new NextResponse(audio, {
+    return new Response(audio, {
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": "audio/pcm",
         "Cache-Control": "no-store",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error) {

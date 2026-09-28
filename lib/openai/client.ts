@@ -27,7 +27,7 @@ export async function openaiJson<T>(path: string, body: unknown, signal?: AbortS
   return payload as T;
 }
 
-export async function openaiSpeech(body: unknown): Promise<ArrayBuffer> {
+export async function openaiSpeechStream(body: unknown): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch(`${OPENAI_URL}/audio/speech`, {
     method: "POST",
     headers: {
@@ -36,11 +36,11 @@ export async function openaiSpeech(body: unknown): Promise<ArrayBuffer> {
     },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     const text = await response.text();
     throw new Error(text || `Speech request failed (${response.status})`);
   }
-  return response.arrayBuffer();
+  return response.body;
 }
 
 type ResponsePayload = {
