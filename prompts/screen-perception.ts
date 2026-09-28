@@ -5,6 +5,7 @@ export function buildScreenPerceptionPrompt(input: {
   currentStep: string;
   expectedNextState?: string;
   previousScreenSummary: string | null;
+  expectedTarget?: string | null;
 }): string {
   return `ROLE
 You convert a screenshot into a compact semantic description for a screen-aware onboarding agent.
@@ -27,6 +28,12 @@ ${input.expectedNextState ?? "unknown"}
 PREVIOUS SCREEN STATE
 ${input.previousScreenSummary ?? "none"}
 
+CONTROL TO CHECK
+${input.expectedTarget ?? "none"}
+The expected control is only a hint from the previous screen. Identify the current page first.
+On Dashboard include Open Settings; on Settings include Integrations; on Integrations include the GitHub card; on GitHub Integration include Connect GitHub; on GitHub Authorization include Authorize; on API Keys include the Settings sidebar item. If the current page's control is visible, include it in relevantElements with its visible label and enabled/disabled state. Never invent a control that is not visible.
+On GitHub Connected, include the visible success heading or badge in relevantElements and describe it in the summary.
+
 KNOWN PAGE NAMES
 Use one of these page names when the screen matches: Dashboard, Settings, Integrations, GitHub Integration, GitHub Authorization, GitHub Connected, API Keys, Loading.
 If the UI is a skeleton, spinner, or "loading" state, set page to "Loading". Do not call a loading screen the destination page.
@@ -44,6 +51,7 @@ Focus on:
 
 Ignore:
 - cursor position,
+- the floating AGENT widget, its guide text, and its trace panel when they appear over the sandbox,
 - decorative animations,
 - irrelevant notifications,
 - visual styling unless it affects the task.

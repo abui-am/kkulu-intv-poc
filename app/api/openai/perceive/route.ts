@@ -10,6 +10,7 @@ const requestSchema = z.object({
   currentStep: z.string(),
   expectedNextState: z.string().optional(),
   previousScreenSummary: z.string().nullable(),
+  expectedTarget: z.string().nullable().optional(),
 });
 
 export async function POST(request: Request) {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
       currentStep: body.currentStep,
       expectedNextState: body.expectedNextState,
       previousScreenSummary: body.previousScreenSummary,
+      expectedTarget: body.expectedTarget ?? null,
     });
     const payload = await openaiJson<{ output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> }>(
       "/responses",
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
             role: "user",
             content: [
               { type: "input_text", text: prompt },
-              { type: "input_image", image_url: body.imageDataUrl, detail: "auto" },
+              { type: "input_image", image_url: body.imageDataUrl, detail: "low" },
             ],
           },
         ],
