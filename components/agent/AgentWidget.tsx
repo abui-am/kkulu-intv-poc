@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { GuidePanel } from "@/components/session/GuidePanel";
 import type { MirroredSession } from "@/lib/session/channel";
+import { cardCopy, cardPhase, type PrimaryAction } from "@/lib/session/closing";
 import type { AgentStatus } from "@/lib/world/types";
 
 const labels: Record<AgentStatus, string> = {
@@ -10,6 +11,14 @@ const labels: Record<AgentStatus, string> = {
   listening: "Listening",
   thinking: "Thinking",
   speaking: "Speaking",
+};
+
+const primaryLabels: Record<PrimaryAction, string> = {
+  start: "Start",
+  stop: "Stop",
+  done: "Done",
+  continue: "Continue",
+  again: "Walk through again",
 };
 
 export function AgentWidget({
@@ -38,23 +47,44 @@ export function AgentWidget({
   debug: ReactNode;
 }) {
   const [debugOpen, setDebugOpen] = useState(false);
-  const active = Boolean(session?.active);
-  const mode = !active
-    ? "idle"
-    : session?.status === "speaking"
-      ? "speaking"
-      : session?.status === "thinking"
-        ? "thinking"
-        : session?.hearing
-          ? "hearing"
-          : "listening";
-  const label = active ? labels[session?.status === "speaking" || session?.status === "thinking" ? session.status : "listening"] : "Idle";
+  const phase = session
+    ? cardPhase({
+      running,
+      ended: session.ended,
+      goalStatus: session.goalStatus,
+      guideKind: session.guide?.kind ?? null,
+    })
+    : "welcome";
+  const copy = cardCopy({
+    phase,
+    currentStep: session?.currentStep ?? "openSettings",
+    instruction: session?.guide?.instruction ?? session?.instruction ?? null,
+  });
+  const activity = session?.status === "speaking" || session?.status === "thinking" ? session.status : "listening";
+  const mode = phase === "live"
+    ? (noticing ? "listening" : session?.status === "speaking" ? "speaking" : session?.status === "thinking" ? "thinking" : session?.hearing ? "hearing" : "listening")
+    : "idle";
+  const label = phase === "done" || phase === "finished"
+    ? "Done"
+    : phase === "paused"
+      ? "Paused"
+      : phase === "live"
+        ? (noticing ? "Noticed" : labels[activity])
+        : "Idle";
+
+  function onPrimary() {
+    if (copy.primary === "stop" || copy.primary === "done") onStop();
+    else if (copy.primary === "again") {
+      onReset();
+      onStart();
+    } else onStart();
+  }
 
   return (
     <aside className="fixed right-5 bottom-5 z-50 w-80 rounded-2xl bg-slate-950 p-3 text-white shadow-2xl" aria-label="Agent">
       <p className="text-[10px] font-medium tracking-[0.14em] text-teal-200">AGENT</p>
       <div className="mt-2 flex items-center gap-2" role="status" aria-live="polite">
-        {noticing ? (
+        {noticing && phase === "live" ? (
           <span className="agent-dots" aria-label="Noticed the click">
             <span />
             <span />
@@ -65,41 +95,38 @@ export function AgentWidget({
             <span className="agent-mark-core" />
           </span>
         )}
-        <p className="text-xs font-medium text-teal-100">{noticing ? "Noticed" : label}</p>
+        <p className="text-xs font-medium text-teal-100">{label}</p>
       </div>
-      {active && session ? (
+      {copy.heading ? (
         <div className="mt-3">
-          <GuidePanel
-            guide={session.guide}
-            verifiedCount={session.verifiedCount}
-            skippedCount={session.skippedCount}
-            compact
-          />
+          <GuidePanel heading={copy.heading} body={copy.body} compact />
         </div>
       ) : (
-        <p className="mt-2 text-sm leading-5">Start the session to begin.</p>
+        <p className="mt-2 text-sm leading-5">{copy.body}</p>
       )}
-      {error && <p className="mt-3 text-sm leading-5 text-amber-200">{error}</p>}
+      {error && phase === "live" && <p className="mt-3 text-sm leading-5 text-amber-200">{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
-        {!running ? (
-          <button type="button" onClick={onStart} className="min-h-11 cursor-pointer rounded-md bg-white px-3 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
-            Start
-          </button>
-        ) : (
-          <button type="button" onClick={onStop} className="min-h-11 cursor-pointer rounded-md bg-white/10 px-3 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
-            Stop
-          </button>
-        )}
-        {allowShare && running && !sharing && (
+        <button
+          type="button"
+          onClick={onPrimary}
+          className={copy.primary === "start" || copy.primary === "continue" || copy.primary === "again" || copy.primary === "done"
+            ? "min-h-11 cursor-pointer rounded-md bg-white px-3 text-sm font-medium text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+            : "min-h-11 cursor-pointer rounded-md bg-white/10 px-3 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"}
+        >
+          {primaryLabels[copy.primary]}
+        </button>
+        {allowShare && phase === "live" && !sharing && (
           <button type="button" onClick={onShare} className="min-h-11 cursor-pointer rounded-md bg-white/10 px-3 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
             Share entire screen
           </button>
         )}
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <button type="button" onClick={onReset} className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
-          Reset session
-        </button>
+        {phase === "paused" || phase === "welcome" || phase === "live" ? (
+          <button type="button" onClick={onReset} className="min-h-11 cursor-pointer text-xs text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300">
+            {phase === "paused" ? "Start over" : "Reset session"}
+          </button>
+        ) : <span />}
         <button
           type="button"
           aria-expanded={debugOpen}

@@ -104,7 +104,7 @@ export function KuluAgent({
   const host = hostRef.current;
   const snapshot = view.snapshot;
   const alert = view.error ?? snapshot.error;
-  const mirrored = view.running ? mirrorSession(snapshot) : null;
+  const mirrored = view.running || snapshot.ended ? mirrorSession(snapshot) : null;
 
   return (
     <>

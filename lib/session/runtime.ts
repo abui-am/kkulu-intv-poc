@@ -268,11 +268,11 @@ export class SessionRuntime {
     this.latestJpeg = null;
     this.screenSharing = false;
     this.sharedSurfaceLabel = null;
-    this.apply({ type: "SCREEN_UNAVAILABLE", at: Date.now() });
     this.log = {
       ...this.log,
       world: {
         ...this.log.world,
+        flags: { ...this.log.world.flags, screenAvailable: false },
         agent: { ...this.log.world.agent, status: "idle" },
       },
     };
@@ -889,7 +889,7 @@ export class SessionRuntime {
       if (guide) {
         const fallback = fallbackGuideDecision(guide, this.log.world.screen.semanticVersion);
         const decision = this.log.world.conversation.activeQuestion
-          ? guidedDecision({ ...fallback, response: "I couldn't answer that right now." }, guide, this.log.world.conversation.activeQuestion)
+          ? guidedDecision({ ...fallback, response: "I blanked on that. Ask me again in a second." }, guide, this.log.world.conversation.activeQuestion)
           : fallback;
         this.apply({ type: "DECISION_READY", decision, at: Date.now() });
         if (decision.type !== "wait" && !isClickNotice(decision.response)) {
@@ -1083,7 +1083,7 @@ export class SessionRuntime {
     if (this.interactionTimer) clearTimeout(this.interactionTimer);
     this.stabilizer?.cancel();
     this.apply({ type: "SCREEN_UNAVAILABLE", at: Date.now() });
-    this.error = "Screen sharing stopped. Share the entire screen to continue.";
+    this.error = "Screen sharing stopped. Share the entire screen and I'll pick it back up.";
     this.pauseVoice();
     this.publish(this.snapshot());
     if (!this.ended && this.log.world.agent.status !== "idle") this.issueGuide(true);
