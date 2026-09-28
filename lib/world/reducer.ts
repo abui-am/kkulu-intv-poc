@@ -25,7 +25,7 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
           speechInterrupted: false,
           activeGuide: world.agent.activeGuide?.kind === "action" || world.agent.activeGuide?.kind === "complete"
             ? world.agent.activeGuide
-            : { kind: "wait", instruction: "Looking at the page…" },
+            : { kind: "wait", instruction: "Give me a second. I'm looking at the page." },
         },
       };
     case "USER_SPEECH_STARTED":
@@ -95,7 +95,7 @@ export function reduceWorld(world: WorldModel, event: SessionEvent): WorldModel 
       return {
         ...world,
         screen: { ...world.screen, page: null, summary: null, relevantElements: [], perceptionStatus: "ambiguous", review: "normal" },
-        agent: { ...world.agent, activeGuide: { kind: "clarify", instruction: "I can't verify the current screen. Please keep the sandbox visible." } },
+        agent: { ...world.agent, activeGuide: { kind: "clarify", instruction: "I lost my read on this screen. Keep the sandbox in view." } },
         flags: { ...world.flags, needsDeepReasoning: true },
       };
     case "SANDBOX_INTERACTION":

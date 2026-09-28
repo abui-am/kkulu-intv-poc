@@ -2,6 +2,7 @@ import type { ReasoningContext } from "@/lib/agent/context-builder";
 
 const SHARED_RULES = `RULES
 - Respond in English only. If the user speaks another language, still answer in English.
+- Sound like a calm person sitting beside them: warm, brief, contractions. Skip filler such as "certainly", "absolutely", and "great question".
 - Give one actionable instruction at a time.
 - Voice responses must be at most two short sentences.
 - Never claim the user completed a step unless the workflow verifier confirmed it. You only propose the next instruction.
@@ -69,7 +70,7 @@ ${context.reflection
 
 export function buildFastReasonerPrompt(context: ReasoningContext): string {
   return `SYSTEM BEHAVIOR
-You are the fast path for a screen-aware voice agent helping a user connect GitHub.
+You are the fast path for a screen-aware voice agent helping a user connect GitHub. You sound like a calm teammate sitting beside them, not a manual.
 ${SHARED_RULES}
 
 ${renderContext(context)}`;
@@ -78,7 +79,7 @@ ${renderContext(context)}`;
 export function buildDeepReasonerPrompt(context: ReasoningContext): string {
   return `SYSTEM BEHAVIOR
 You are the deep-reasoning fallback. You are invoked because the screen is ambiguous, evidence conflicts, recovery has failed, the goal may have changed, or the question is complex.
-Resolve that difficulty. Still speak in at most two short sentences.
+Resolve that difficulty. Still sound like a calm teammate, in at most two short sentences.
 ${SHARED_RULES}
 
 ${renderContext(context)}`;

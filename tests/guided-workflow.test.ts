@@ -107,13 +107,13 @@ describe("GitHub guide and observed progress", () => {
       screenAvailable: true,
       review: "screen_lag",
     });
-    expect(guide).toMatchObject({ kind: "clarify", instruction: "The shared screen has not caught up with this page yet. Stay here for a moment." });
+    expect(guide).toMatchObject({ kind: "clarify", instruction: "The shared screen is a beat behind. Stay on this page for a second." });
   });
 
   it("keeps the back-navigation lines with the other scripted speech", () => {
     const lines = scriptedInstructions();
     const stalled = stalledSharedInstruction("Settings", "Integrations");
-    expect(lines).toContain("The shared screen has not caught up with this page yet. Stay here for a moment.");
+    expect(lines).toContain("The shared screen is a beat behind. Stay on this page for a second.");
     expect(lines).toContain(stalled);
     expect(guideForObservation({
       page: "Settings",
@@ -129,7 +129,7 @@ describe("GitHub guide and observed progress", () => {
     world = reduceWorld(world, { type: "SANDBOX_INTERACTION", label: "Integrations", at: 2 });
     expect(world.agent.activeGuide).toEqual(guide);
     world = reduceWorld(world, { type: "SANDBOX_PAGE_REPORTED", page: "Loading", at: 3 });
-    expect(world.agent.activeGuide).toMatchObject({ kind: "wait", instruction: "Wait for Integrations to finish loading." });
+    expect(world.agent.activeGuide).toMatchObject({ kind: "wait", instruction: "Integrations is still loading. Give it a moment." });
     world = reduceWorld(world, { type: "SESSION_STARTED", at: 4 });
     world = observe(world, "Integrations");
     expect(world.agent.activeGuide).toMatchObject({ target: "GitHub", expectedPage: "GitHub Integration" });
@@ -171,7 +171,7 @@ describe("GitHub guide and observed progress", () => {
       reasoningClass: "normal_flow",
       requiresDeepReasoning: false,
     }, guide, null);
-    expect(decision.response).toBe("Click Settings in the sidebar to return to the GitHub setup path.");
+    expect(decision.response).toBe("This is API Keys, a little off the path. Click Settings in the sidebar and we'll get back to GitHub.");
     expect(decision.expectedScreenState).toBe("Settings");
   });
 
